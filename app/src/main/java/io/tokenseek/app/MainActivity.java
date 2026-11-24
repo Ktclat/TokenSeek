@@ -37,7 +37,7 @@ public final class MainActivity extends Activity {
     private static final int REQUEST_MICROPHONE = 42;
     private static final int OPEN_PLATFORM = 43;
     private boolean platformOpen;
-    private boolean restoreAccountOnReturn;
+    private String platformParentHash;
     private boolean localPageReady;
     private String pendingPlatformPage;
     // The capability is inserted into a same-origin script only for the lifetime of this WebView.
@@ -89,8 +89,11 @@ public final class MainActivity extends Activity {
         }
         if (state != null) {
             platformOpen = state.getBoolean("platformOpen");
-            restoreAccountOnReturn = platformOpen;
-            pendingPlatformPage = state.getString("pendingPlatformPage");
+            platformParentHash = state.containsKey("platformParentHash")
+                    ? state.getString("platformParentHash") : "#return-official-account";
+            // The old chat WebView is gone after process recreation. Restore its screen only
+            // when the official activity returns, unless the user explicitly selects binding.
+            pendingPlatformPage = platformOpen ? platformParentHash : state.getString("pendingPlatformPage");
         }
         web.loadUrl(LocalSite.INDEX);
     }
@@ -98,6 +101,7 @@ public final class MainActivity extends Activity {
     @Override protected void onSaveInstanceState(Bundle state) {
         super.onSaveInstanceState(state);
         state.putBoolean("platformOpen", platformOpen);
+        state.putString("platformParentHash", platformParentHash);
         state.putString("pendingPlatformPage", pendingPlatformPage);
     }
 
@@ -107,7 +111,7 @@ public final class MainActivity extends Activity {
     }
 
     private void deliverPlatformReturn() {
-        if (!localPageReady || pendingPlatformPage == null) return;
+        if (platformOpen || !localPageReady || pendingPlatformPage == null) return;
         String destination = JSONObject.quote(LocalSite.INDEX + pendingPlatformPage);
         pendingPlatformPage = null;
         web.evaluateJavascript("location.replace(" + destination + ")", null);
@@ -146,11 +150,19 @@ public final class MainActivity extends Activity {
     }
 
     void openExternal(Uri uri) {
+        openExternal(uri, "");
+    }
+
+    private void openExternal(Uri uri, String fromPage) {
         if (!("https".equals(uri.getScheme()) || "http".equals(uri.getScheme()))
                 || uri.getHost() == null || uri.getUserInfo() != null || LocalSite.ownedOrigin(uri)) return;
         if (OfficialPlatformActivity.isPlatformUrl(uri)) {
             if (!platformOpen) {
                 platformOpen = true;
+                if ("wallet".equals(fromPage)) platformParentHash = "#return-official-wallet";
+                else if ("keys".equals(fromPage)) platformParentHash = "#return-official-keys";
+                else if ("account".equals(fromPage)) platformParentHash = "#return-official-account";
+                else platformParentHash = null;
                 startActivityForResult(OfficialPlatformActivity.createIntent(this, uri.toString()), OPEN_PLATFORM);
             }
             return;
@@ -236,10 +248,8 @@ public final class MainActivity extends Activity {
             if (status == RESULT_OK && data != null
                     && data.getBooleanExtra(OfficialPlatformActivity.EXTRA_BIND, false)) {
                 pendingPlatformPage = "#bind-official-key";
-            } else if (restoreAccountOnReturn) {
-                pendingPlatformPage = "#return-official-account";
             }
-            restoreAccountOnReturn = false;
+            platformParentHash = null;
             deliverPlatformReturn();
         } else if (request == DocumentExport.PICK_DESTINATION) {
             export.result(status, data);
@@ -300,9 +310,9 @@ public final class MainActivity extends Activity {
         @JavascriptInterface public String manageKeys(String token, String action, String id, String name, String secret) {
             return capability.equals(token) ? vault.manage(action, id, name, secret) : "";
         }
-        @JavascriptInterface public void openLink(String token, String url) {
+        @JavascriptInterface public void openLink(String token, String url, String fromPage) {
             if (capability.equals(token) && url != null) {
-                runOnUiThread(() -> openExternal(Uri.parse(url)));
+                runOnUiThread(() -> openExternal(Uri.parse(url), fromPage));
             }
         }
         @JavascriptInterface public boolean chooseDocument(String token, String name, String mime) {

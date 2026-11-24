@@ -5,7 +5,7 @@ import { regionCodes, getRegionName, provinces } from '../../services/location.j
 import { isChineseBrowser, setLocale, setLocation, setThemePreference, setTtsVoice, useSettings } from '../../services/settings.js'
 import { IconChevronRightOutline14, IconDataOutline16, IconLinkOutline16, IconSettingsOutline16 } from '../base/icons.js'
 import { useIsMobile, useMobileViewport } from '../../app/viewport.js'
-import { OfficialKeysLink, usePlatformLabels } from './OfficialPlatform.js'
+import { usePlatformLabels } from './OfficialPlatform.js'
 import { AccountFlow, AccountIcon, useAccountText } from './AccountFlow.js'
 import { Button } from '../base/Button.js'
 import { Wallet, WalletIcon } from './Wallet.js'
@@ -29,7 +29,7 @@ export const SettingsPages = ({ page, backDisabled, children }: {
   const city = province?.cities.find(item => item.code === location?.city)
   const localProvince = isChineseBrowser()
   const titles: Record<SettingsSection, string> = {
-    home: t('settings'), account: account.title, wallet: t('walletTitle'), keys: labels.chatKeys, general: t('settingDialogAsideGeneralOptionLabel'),
+    home: t('settings'), account: account.title, wallet: t('wallet'), keys: labels.keys, general: t('settingDialogAsideGeneralOptionLabel'),
     data: t('settingDialogAsideDataOptionLabel'), theme: t('avatarMenuSettingsDialogThemeItemLabel'),
     language: t('settingsLocalePreference'), voice: t('settingsTtsVoice'),
     location: t('settingsLocation'), cities: t('settingsLocationCity'),
@@ -81,8 +81,6 @@ export const SettingsPages = ({ page, backDisabled, children }: {
     }
   }, [backDisabled])
 
-  const keyValue = apiKey ? '•••• ' + apiKey.slice(-4) : copy.unbound
-  const keyRow = <SettingsRow label={apiKey ? labels.chatKeys : labels.selectKey} value={keyValue} icon={<IconLinkOutline16 />} onClick={() => pushSettings('keys')} />
   const renderPage = () => {
     switch (page) {
       case 'home':
@@ -90,12 +88,11 @@ export const SettingsPages = ({ page, backDisabled, children }: {
           <h2 className={styles.sectionLabel}>{copy.account}</h2>
           <div className={styles.group}>
             <SettingsRow label={account.title} icon={<AccountIcon />} onClick={() => pushSettings('account')} />
-            <OfficialKeysLink />
             <SettingsRow label={t('wallet')} icon={<WalletIcon />} onClick={() => pushSettings('wallet')} />
+            <SettingsRow label={labels.keys} icon={<IconLinkOutline16 />} onClick={() => pushSettings('keys')} />
           </div>
           <h2 className={styles.sectionLabel}>{copy.application}</h2>
           <div className={styles.group}>
-            {keyRow}
             <SettingsRow label={titles.general} icon={<IconSettingsOutline16 />} onClick={() => pushSettings('general')} />
             <SettingsRow label={titles.data} icon={<IconDataOutline16 />} onClick={() => pushSettings('data')} />
           </div>
@@ -103,13 +100,7 @@ export const SettingsPages = ({ page, backDisabled, children }: {
       case 'account':
         return <AccountFlow apiKey={apiKey} />
       case 'wallet':
-        return <>
-          <Wallet key={apiKey ?? ''} apiKey={apiKey} />
-          <div className={styles.group}>
-            <OfficialKeysLink />
-            {keyRow}
-          </div>
-        </>
+        return <Wallet key={apiKey ?? ''} apiKey={apiKey} />
       case 'keys':
         return <>
           <AccountKey key={apiKey ?? ''} />
@@ -168,7 +159,7 @@ export const SettingsPages = ({ page, backDisabled, children }: {
   }
 
   return createPortal(
-    <div ref={frameRef} className={styles.screen}>
+    <div ref={frameRef} data-tokenseek-page={page} className={styles.screen}>
       <header className={styles.bar}>
         <div className={styles.barInner}>
           <button type="button" className={styles.back} aria-label={copy.back} disabled={backDisabled} onClick={() => backSettings()}>

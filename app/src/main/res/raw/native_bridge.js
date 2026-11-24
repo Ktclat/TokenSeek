@@ -63,7 +63,8 @@
     try {
       const url = new URL(input, location.href);
       if (!['https:', 'http:'].includes(url.protocol) || url.origin === location.origin) return false;
-      host.openLink(token, url.href);
+      const fromPage = document.querySelector('[data-tokenseek-page]')?.dataset.tokenseekPage ?? '';
+      host.openLink(token, url.href, fromPage);
       return true;
     } catch {
       return false;

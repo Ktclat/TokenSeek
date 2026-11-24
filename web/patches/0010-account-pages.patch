@@ -1,0 +1,142 @@
+diff --git a/src/components/settings/settingsDialogState.ts b/src/components/settings/settingsDialogState.ts
+index c2391b4..e9738da 100644
+--- a/src/components/settings/settingsDialogState.ts
++++ b/src/components/settings/settingsDialogState.ts
+@@ -5,20 +5,29 @@ export type SettingsSection =
+   | 'home' | 'account' | 'wallet' | 'keys' | 'general' | 'data'
+   | 'theme' | 'language' | 'voice' | 'location' | 'cities'
+ 
+-type SettingsNavigation = { stack: SettingsSection[] }
++type SettingsNavigation = { stack: SettingsSection[]; focusNewKey: boolean }
+ 
+-export const useSettingsDialog = create<SettingsNavigation>(() => ({ stack: [] }))
++export const useSettingsDialog = create<SettingsNavigation>(() => ({ stack: [], focusNewKey: false }))
+ 
+ export const openSettings = (section: SettingsSection) =>
+-  useSettingsDialog.setState({ stack: [section] })
++  useSettingsDialog.setState({ stack: [section], focusNewKey: false })
+ 
+ export const pushSettings = (section: SettingsSection) =>
+-  useSettingsDialog.setState(({ stack }) => ({ stack: [...stack, section] }))
++  useSettingsDialog.setState(({ stack }) => ({ stack: [...stack, section], focusNewKey: false }))
+ 
+ export const backSettings = (steps = 1) =>
+-  useSettingsDialog.setState(({ stack }) => ({ stack: stack.slice(0, -steps) }))
++  useSettingsDialog.setState(({ stack }) => ({ stack: stack.slice(0, -steps), focusNewKey: false }))
+ 
+-export const closeSettings = () => useSettingsDialog.setState({ stack: [] })
++// An explicit return from official key creation opens a fresh entry without changing the active key.
++export const requestKeyInput = () =>
++  useSettingsDialog.setState(({ stack }) => ({
++    stack: stack.at(-1) === 'keys' ? stack : [...stack, 'keys'],
++    focusNewKey: true,
++  }))
++
++export const keyInputFocused = () => useSettingsDialog.setState({ focusNewKey: false })
++
++export const closeSettings = () => useSettingsDialog.setState({ stack: [], focusNewKey: false })
+ 
+ export const ensureApiKey = () => {
+   const { apiKey, keyRing } = useSettings.getState()
+diff --git a/src/components/sider/Sider.module.css b/src/components/sider/Sider.module.css
+index eaceecf..45fd645 100644
+--- a/src/components/sider/Sider.module.css
++++ b/src/components/sider/Sider.module.css
+@@ -119,8 +119,9 @@
+ 
+ .bottom {
+   display: grid;
+-  grid-template-columns: minmax(0, 1fr) auto;
+-  column-gap: 6px;
++  grid-template-columns: minmax(0, 1fr) auto auto;
++  align-items: center;
++  column-gap: 2px;
+   flex-shrink: 0;
+   height: 64px;
+ }
+diff --git a/src/components/sider/Sider.tsx b/src/components/sider/Sider.tsx
+index 3613a39..65d3fcc 100644
+--- a/src/components/sider/Sider.tsx
++++ b/src/components/sider/Sider.tsx
+@@ -10,7 +10,7 @@ import { Button } from '../base/Button.js'
+ import { IconButton } from '../base/IconButton.js'
+ import { Modal } from '../base/Modal.js'
+ import { showToast } from '../base/toastState.js'
+-import { OfficialKeysLink } from '../settings/OfficialPlatform.js'
++import { WalletIcon } from '../settings/Wallet.js'
+ import { AccountIcon, useAccountText } from '../settings/AccountFlow.js'
+ import { openSettings } from '../settings/settingsDialogState.js'
+ import { closeMobileSider, useMobileSider } from './mobileSiderState.js'
+@@ -77,7 +77,6 @@ export const Sider = ({ mobile = false }: { mobile?: boolean }) => {
+         </span>
+         {t('newChat')}
+       </button>
+-      <OfficialKeysLink shortcut />
+       <div className={styles.listWrap}>
+         <div className={styles.list}>
+           {groups.map((group) => (
+@@ -105,13 +104,17 @@ export const Sider = ({ mobile = false }: { mobile?: boolean }) => {
+         </button>
+         <button type="button" className={styles.settings} onClick={() => {
+           closeMobileSider()
+-          openSettings('home')
++          openSettings('wallet')
+         }}>
+-          <span className={styles.settingsIcon}>
+-            <IconSettingsOutline16 />
+-          </span>
+-          <span className={styles.settingsLabel}>{t('settings')}</span>
++          <span className={styles.settingsIcon}><WalletIcon /></span>
++          <span className={styles.settingsLabel}>{t('wallet')}</span>
+         </button>
++        <IconButton size="xl" tone="primary" icon={<IconSettingsOutline16 />} tooltip={t('settings')}
++          onClick={() => {
++            closeMobileSider()
++            openSettings('home')
++          }}
++        />
+       </div>
+       {deleting ? (
+         <Modal
+diff --git a/src/main.tsx b/src/main.tsx
+index 86b6ead..f0a4e3c 100644
+--- a/src/main.tsx
++++ b/src/main.tsx
+@@ -1,6 +1,6 @@
+ import { createRoot } from 'react-dom/client'
+ import { App } from './app/App.js'
+-import { openSettings } from './components/settings/settingsDialogState.js'
++import { openSettings, requestKeyInput, useSettingsDialog } from './components/settings/settingsDialogState.js'
+ import { setupTheme } from './app/theme.js'
+ import { ensureKatex } from './services/markdown/katex.js'
+ import './app/theme.css'
+@@ -9,9 +9,27 @@ import './app/global.css'
+ // Restore the requested destination when the Android official platform screen returns.
+ const handlePortalReturn = () => {
+   const hash = window.location.hash
+-  if (hash !== '#bind-official-key' && hash !== '#return-official-account') return
++  let page: 'account' | 'wallet' | 'keys'
++  switch (hash) {
++    case '#bind-official-key':
++    case '#return-official-keys':
++      page = 'keys'
++      break
++    case '#return-official-account':
++      page = 'account'
++      break
++    case '#return-official-wallet':
++      page = 'wallet'
++      break
++    default:
++      return
++  }
+   window.history.replaceState(window.history.state, '', window.location.pathname + window.location.search)
+-  openSettings(hash === '#bind-official-key' ? 'keys' : 'account')
++  if (hash === '#bind-official-key') {
++    requestKeyInput()
++  } else if (useSettingsDialog.getState().stack.at(-1) !== page) {
++    openSettings(page)
++  }
+ }
+ window.addEventListener('hashchange', handlePortalReturn)
+ handlePortalReturn()

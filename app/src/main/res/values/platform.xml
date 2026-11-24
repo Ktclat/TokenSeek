@@ -11,16 +11,16 @@
         <item name="android:textColor">@color/platform_accent</item>
         <item name="android:textAllCaps">false</item>
     </style>
-    <style name="PlatformTab" parent="@style/PlatformAction">
-        <item name="android:layout_width">0dp</item>
-        <item name="android:layout_height">wrap_content</item>
-        <item name="android:layout_weight">1</item>
-    </style>
-    <string name="platform_close">关闭官方平台</string>
-    <string name="platform_bind">返回绑定</string>
-    <string name="platform_home">平台</string>
-    <string name="platform_topup">充值</string>
-    <string name="platform_keys">API Key</string>
+    <string name="platform_back">返回</string>
+    <string name="platform_bind">用于聊天</string>
+    <string name="platform_home">DeepSeek 开放平台</string>
+    <string name="platform_login">登录 DeepSeek</string>
+    <string name="platform_signup">注册 DeepSeek</string>
+    <string name="platform_topup">官方充值</string>
+    <string name="platform_keys">API Key 管理</string>
+    <string name="platform_provider">账户授权</string>
+    <string name="platform_payment">支付</string>
+    <string name="platform_website">网页</string>
     <string name="platform_https_origin" translatable="false">https://%1$s</string>
     <string name="platform_loading">正在打开页面…</string>
     <string name="platform_retry">重试</string>

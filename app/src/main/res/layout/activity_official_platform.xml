@@ -1,24 +1,23 @@
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/platform_root" android:layout_width="match_parent" android:layout_height="match_parent"
     android:orientation="vertical">
-    <LinearLayout android:id="@+id/platform_header" android:layout_width="match_parent" android:layout_height="wrap_content"
+    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
         android:minHeight="48dp" android:gravity="center_vertical" android:orientation="horizontal">
-        <ImageButton android:id="@+id/platform_close" android:layout_width="48dp" android:layout_height="48dp"
-            android:background="?android:attr/selectableItemBackgroundBorderless" android:src="@drawable/platform_close"
-            android:contentDescription="@string/platform_close" />
-        <TextView android:id="@+id/platform_origin" android:layout_width="0dp" android:layout_weight="1"
-            android:layout_height="wrap_content" android:layout_marginEnd="8dp" android:maxLines="2"
-            android:ellipsize="middle" android:textDirection="ltr" android:textSize="15sp"
-            android:textColor="@color/platform_ink" android:fontFamily="sans-serif-medium" />
+        <ImageButton android:id="@+id/platform_back" android:layout_width="48dp" android:layout_height="48dp"
+            android:background="?android:attr/selectableItemBackgroundBorderless" android:src="@drawable/platform_back"
+            android:contentDescription="@string/platform_back" />
+        <LinearLayout android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content"
+            android:orientation="vertical" android:paddingVertical="3dp" android:layout_marginEnd="8dp">
+            <TextView android:id="@+id/platform_title" android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:includeFontPadding="false" android:singleLine="true" android:ellipsize="end" android:textSize="16sp"
+                android:fontFamily="sans-serif-medium" android:textColor="@color/platform_ink" />
+            <TextView android:id="@+id/platform_origin" android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:includeFontPadding="false" android:singleLine="true" android:ellipsize="middle" android:textDirection="ltr"
+                android:textSize="12sp" android:textColor="@color/platform_muted" />
+        </LinearLayout>
         <Button android:id="@+id/platform_bind" style="@style/PlatformAction"
-            android:layout_width="wrap_content" android:layout_height="wrap_content"
+            android:layout_width="wrap_content" android:layout_height="wrap_content" android:visibility="gone"
             android:layout_marginEnd="4dp" android:text="@string/platform_bind" />
-    </LinearLayout>
-    <LinearLayout android:id="@+id/platform_tabs" android:layout_width="match_parent"
-        android:layout_height="wrap_content" android:orientation="horizontal">
-        <Button android:id="@+id/platform_home" style="@style/PlatformTab" android:text="@string/platform_home" />
-        <Button android:id="@+id/platform_topup" style="@style/PlatformTab" android:text="@string/platform_topup" />
-        <Button android:id="@+id/platform_keys" style="@style/PlatformTab" android:text="@string/platform_keys" />
     </LinearLayout>
     <ProgressBar android:id="@+id/platform_progress" style="?android:attr/progressBarStyleHorizontal"
         android:layout_width="match_parent" android:layout_height="2dp" android:max="100"

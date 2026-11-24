@@ -4,12 +4,11 @@ TokenSeek 把 DeepSeek 的聊天体验和开放平台账户余额放在同一个
 
 ## 第一次使用
 
-1. 在侧栏打开「DeepSeek 账户」，进入官方平台。TokenSeek 会在应用内打开 `platform.deepseek.com` 的真实网页。直接在该页面完成登录。[官方开放平台](https://platform.deepseek.com/)
-2. 在应用内进入「充值」，核对官方页面显示的账号、金额和支付方式，按页面提示付款。资金进入该账号的 DeepSeek 开放平台余额。[官方充值入口](https://platform.deepseek.com/top_up)
-3. 在「API Key」打开官方密钥管理页，为同一账号创建或管理密钥。要将新建的 Key 用于聊天，复制官网显示的 Key，返回本机选用页面，粘贴后点「验证并选用」。已有 Key 可以直接在本机验证。[官方密钥管理](https://platform.deepseek.com/api_keys)
-4. 回到账户页查看官方余额并开始聊天。下次启动会继续使用已选中的 Key。这里的余额与聊天消费都对应这把 Key 所属的账号。
+1. 在「DeepSeek 账户」点「登录 DeepSeek」。应用内会显示官方登录页，顶部保留返回、页面名称和真实域名，给登录表单和手机键盘留出空间。[官方登录页](https://platform.deepseek.com/sign_in)
+2. 充值时打开「钱包」，点充值并在官方页面核对账号和金额。如果官网先要求登录，TokenSeek 会记住这次要充值。返回钱包后，应用用当前选中的 Key 向官网重新查询余额。[官方充值入口](https://platform.deepseek.com/top_up)
+3. 在「API 密钥」中创建或管理官方密钥。要将新密钥用于聊天，在官网上复制它，点「用于聊天」，返回已展开的输入框粘贴并验证。已有密钥也可以直接填入。验证通过后，它才成为聊天和余额查询使用的密钥。[官方密钥管理](https://platform.deepseek.com/api_keys)
 
-登录、充值和官方密钥管理共享应用内的网页会话。官网页面独立于本地聊天窗口，使用设备的 Android System WebView 显示，地址栏标明正在访问的域名。用户可以直接在网页上使用官网提供的账号登录方式。如果选择的身份提供方要求系统浏览器，或支付方式要求唤起微信、支付宝，TokenSeek 会先显示操作入口，由用户决定是否继续。[Google 登录政策](https://developers.google.com/identity/protocols/oauth2/policies)
+登录、充值和密钥管理共享应用内的网页会话。官网跳转到登录时，Android 顶栏会切换到登录任务。若登录后官网已进入原业务页面，用户可以直接继续。若回到了官方首页，应用会尝试一次回到原业务页面。返回键先收起键盘、退出当前子页面，最后回到发起操作的地方。外部身份或支付提供方需要浏览器、微信或支付宝时，由用户点选是否继续。[Google 登录政策](https://developers.google.com/identity/protocols/oauth2/policies)
 
 本机支持给多把聊天密钥命名、切换或移除，使用 Android Keystore 加密保存。取消选用或移除当前 Key 后，可手动选用另一把。要在 DeepSeek 服务器上撤销密钥，请在应用内的官方密钥管理页操作。
 
@@ -37,7 +36,7 @@ TokenSeek 调用官方 `GET /user/balance`，按币种分别显示总余额、�
 ./gradlew assembleDebug
 ```
 
-调试安装包生成在 `app/build/outputs/apk/debug/app-debug.apk`，最低支持 Android 8.0，聊天页面需要较新的 Android System WebView。Gradle 会取出固定版本的上游代码、应用 TokenSeek 改动、执行 TypeScript 检查，然后将聊天页面和上游许可证一起打包。
+使用 `./gradlew testDebugUnitTest` 可以检查登录后的任务恢复、密钥页操作和返回历史。调试安装包生成在 `app/build/outputs/apk/debug/app-debug.apk`，最低支持 Android 8.0，聊天页面需要较新的 Android System WebView。Gradle 会取出固定版本的上游代码、应用 TokenSeek 改动、执行 TypeScript 检查，然后将聊天页面和上游许可证一起打包。
 
 | 要修改的部分 | 源码入口 |
 | --- | --- |

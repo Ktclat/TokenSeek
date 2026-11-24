@@ -9,7 +9,6 @@ import android.content.res.Configuration;
 import android.graphics.Bitmap;
 import android.graphics.Insets;
 import android.graphics.Rect;
-import android.graphics.Typeface;
 import android.net.Uri;
 import android.net.http.SslError;
 import android.os.Build;
@@ -17,17 +16,18 @@ import android.os.Bundle;
 import android.os.Message;
 import android.view.View;
 import android.view.WindowInsets;
+import android.view.inputmethod.InputMethodManager;
 import android.webkit.CookieManager;
 import android.webkit.SslErrorHandler;
 import android.webkit.WebChromeClient;
 import android.webkit.WebResourceError;
 import android.webkit.WebResourceRequest;
+import android.webkit.WebResourceResponse;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.widget.Button;
 import android.widget.FrameLayout;
-import android.widget.LinearLayout;
 import android.widget.ProgressBar;
 import android.widget.TextView;
 import android.window.OnBackInvokedDispatcher;
@@ -38,24 +38,25 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 
+import static io.tokenseek.app.PlatformNavigation.https;
+
 /** Browser window for the official site. It has no access to the local chat bridge or key store. */
 public final class OfficialPlatformActivity extends Activity {
     static final String EXTRA_ROUTE = "io.tokenseek.app.platform.ROUTE";
     static final String EXTRA_BIND = "io.tokenseek.app.platform.BIND";
-    private static final String BASE = "https://platform.deepseek.com";
-    private static final String HOME = "home";
-    private static final String TOP_UP = "top_up";
-    private static final String KEYS = "api_keys";
-    private static final String SIGN_IN = "sign_in";
+    private static final String CONTINUATION_USED = "platform.continuationUsed";
 
     private final List<WebView> windows = new ArrayList<>();
     private FrameLayout pages;
     private ProgressBar progress;
     private TextView origin;
+    private TextView title;
     private View notice;
     private Button bind;
     private String entryRoute;
-    private String section;
+    private String restartUrl;
+    private PlatformNavigation navigation;
+    private boolean keyboardVisible;
 
     static Intent createIntent(Context context, String address) {
         Uri target = address == null ? null : Uri.parse(address);
@@ -63,34 +64,8 @@ public final class OfficialPlatformActivity extends Activity {
         return new Intent(context, OfficialPlatformActivity.class).setData(target);
     }
 
-    private static URI https(String address) {
-        if (address == null) return null;
-        try {
-            URI uri = new URI(address);
-            if ("https".equalsIgnoreCase(uri.getScheme()) && uri.getHost() != null
-                    && uri.getRawUserInfo() == null && uri.getPort() <= 65535) return uri;
-        } catch (URISyntaxException ignored) {
-            // WebView can also report transient non-network URLs such as about:blank.
-        }
-        return null;
-    }
-
     static boolean isPlatformUrl(Uri uri) {
-        URI parsed = uri == null ? null : https(uri.toString());
-        return parsed != null && "platform.deepseek.com".equalsIgnoreCase(parsed.getHost())
-                && (parsed.getPort() == -1 || parsed.getPort() == 443);
-    }
-
-    private static String route(Uri uri) {
-        String path = uri.getEncodedPath();
-        if (("/" + TOP_UP).equals(path)) return TOP_UP;
-        if (("/" + KEYS).equals(path)) return KEYS;
-        if (("/" + SIGN_IN).equals(path)) return SIGN_IN;
-        return HOME;
-    }
-
-    private static String sectionUrl(String route) {
-        return BASE + "/" + ((TOP_UP.equals(route) || KEYS.equals(route) || SIGN_IN.equals(route)) ? route : "");
+        return uri != null && PlatformNavigation.platformPath(uri.toString()) != null;
     }
 
     @Override protected void onCreate(Bundle state) {
@@ -100,8 +75,12 @@ public final class OfficialPlatformActivity extends Activity {
             finish();
             return;
         }
-        entryRoute = route(initial);
-        section = state == null ? entryRoute : state.getString(EXTRA_ROUTE, entryRoute);
+        String entryPath = PlatformNavigation.platformPath(initial.toString());
+        String safePath = PlatformNavigation.KEYS.equals(entryPath) || PlatformNavigation.TOP_UP.equals(entryPath)
+                || PlatformNavigation.LOGIN.equals(entryPath) ? entryPath : "/";
+        entryRoute = "/".equals(safePath) ? "home" : safePath.substring(1);
+        restartUrl = PlatformNavigation.BASE + safePath;
+        navigation = new PlatformNavigation(initial.toString(), state != null && state.getBoolean(CONTINUATION_USED));
         setContentView(R.layout.activity_official_platform);
         View decor = getWindow().getDecorView();
         boolean dark = (getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK)
@@ -112,15 +91,14 @@ public final class OfficialPlatformActivity extends Activity {
         pages = findViewById(R.id.platform_windows);
         progress = findViewById(R.id.platform_progress);
         origin = findViewById(R.id.platform_origin);
+        title = findViewById(R.id.platform_title);
         notice = findViewById(R.id.platform_notice);
         bind = findViewById(R.id.platform_bind);
-        findViewById(R.id.platform_close).setOnClickListener(v -> returnToChat(false));
-        bind.setOnClickListener(v -> returnToChat(true));
+        findViewById(R.id.platform_back).setOnClickListener(v -> back());
+        bind.setOnClickListener(v -> {
+            if (canBind(visibleWindow())) returnToChat(true);
+        });
         findViewById(R.id.platform_dismiss).setOnClickListener(v -> hideNotice());
-        findViewById(R.id.platform_home).setOnClickListener(v -> openSection(HOME));
-        findViewById(R.id.platform_topup).setOnClickListener(v -> openSection(TOP_UP));
-        findViewById(R.id.platform_keys).setOnClickListener(v -> openSection(KEYS));
-        arrangeHeader();
         View root = findViewById(R.id.platform_root);
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             getWindow().setDecorFitsSystemWindows(false);
@@ -128,8 +106,7 @@ public final class OfficialPlatformActivity extends Activity {
                 Insets insets = windowInsets.getInsets(WindowInsets.Type.systemBars()
                         | WindowInsets.Type.displayCutout() | WindowInsets.Type.ime());
                 v.setPadding(insets.left, insets.top, insets.right, insets.bottom);
-                findViewById(R.id.platform_tabs).setVisibility(
-                        windowInsets.isVisible(WindowInsets.Type.ime()) ? View.GONE : View.VISIBLE);
+                keyboardVisible = windowInsets.isVisible(WindowInsets.Type.ime());
                 return WindowInsets.CONSUMED;
             });
             root.requestApplyInsets();
@@ -137,42 +114,17 @@ public final class OfficialPlatformActivity extends Activity {
             Rect visible = new Rect();
             root.getViewTreeObserver().addOnGlobalLayoutListener(() -> {
                 root.getWindowVisibleDisplayFrame(visible);
-                boolean keyboard = root.getRootView().getHeight() - visible.bottom > dp(130);
-                findViewById(R.id.platform_tabs).setVisibility(keyboard ? View.GONE : View.VISIBLE);
+                keyboardVisible = root.getRootView().getHeight() - visible.bottom
+                        > 130 * getResources().getDisplayMetrics().density;
             });
         }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             getOnBackInvokedDispatcher().registerOnBackInvokedCallback(
                     OnBackInvokedDispatcher.PRIORITY_DEFAULT, this::back);
         }
-        updateTabs();
-        String url = state == null ? initial.toString() : sectionUrl(section);
-        showOrigin(url);
+        String url = state == null ? initial.toString() : restartUrl;
+        showPage(url);
         createWindow().loadUrl(url);
-    }
-
-    private int dp(int value) {
-        return Math.round(value * getResources().getDisplayMetrics().density);
-    }
-
-    private void arrangeHeader() {
-        LinearLayout root = findViewById(R.id.platform_root);
-        LinearLayout header = findViewById(R.id.platform_header);
-        View tabs = findViewById(R.id.platform_tabs);
-        Configuration screen = getResources().getConfiguration();
-        boolean inline = screen.screenWidthDp >= 560 && screen.screenHeightDp < 500;
-        if (inline && tabs.getParent() == root) {
-            root.removeView(tabs);
-            header.addView(tabs, new LinearLayout.LayoutParams(dp(220), -2));
-        } else if (!inline && tabs.getParent() == header) {
-            header.removeView(tabs);
-            root.addView(tabs, 1, new LinearLayout.LayoutParams(-1, -2));
-        }
-    }
-
-    @Override public void onConfigurationChanged(Configuration config) {
-        super.onConfigurationChanged(config);
-        arrangeHeader();
     }
 
     @SuppressLint("SetJavaScriptEnabled")
@@ -222,56 +174,48 @@ public final class OfficialPlatformActivity extends Activity {
         view.requestFocus();
         hideNotice();
         showPage(view.getUrl());
+        ((SiteClient) view.getWebViewClient()).afterRender(view, view.getUrl());
         updateProgress(view.getProgress());
     }
 
-    private void openSection(String requested) {
+    private void restartEntry() {
         while (windows.size() > 1) removeWindow(visibleWindow());
-        section = requested;
         hideNotice();
-        updateTabs();
         WebView root = visibleWindow();
         root.setVisibility(View.VISIBLE);
-        root.loadUrl(sectionUrl(section));
+        root.loadUrl(restartUrl);
     }
 
-    private void updateTabs() {
-        tab(R.id.platform_home, HOME.equals(section) || SIGN_IN.equals(section));
-        tab(R.id.platform_topup, TOP_UP.equals(section));
-        tab(R.id.platform_keys, KEYS.equals(section));
-        bind.setVisibility(KEYS.equals(section) ? View.VISIBLE : View.GONE);
-    }
-
-    private void tab(int id, boolean selected) {
-        Button tab = findViewById(id);
-        tab.setSelected(selected);
-        tab.setTextColor(getColor(selected ? R.color.platform_accent : R.color.platform_muted));
-        tab.setTypeface(Typeface.DEFAULT, selected ? Typeface.BOLD : Typeface.NORMAL);
-    }
-
-    private void showOrigin(String url) {
+    private void showPage(String url) {
         URI location = https(url);
         if (location == null) {
+            title.setText(R.string.platform_website);
             origin.setText(R.string.platform_loading);
         } else {
             String host = location.getHost().toLowerCase(Locale.ROOT);
             String port = location.getPort() == -1 || location.getPort() == 443 ? "" : ":" + location.getPort();
             origin.setText(getString(R.string.platform_https_origin, host + port));
+            title.setText(pageTitle(url, host));
         }
+        bind.setVisibility(canBind(visibleWindow()) ? View.VISIBLE : View.GONE);
     }
 
-    private void showPage(String url) {
-        showOrigin(url);
-        if (url == null) return;
-        Uri site = Uri.parse(url);
-        if (isPlatformUrl(site)) {
-            String actual = route(site);
-            // A login redirect must preserve the user's intended destination.
-            if (!SIGN_IN.equals(actual)) {
-                section = actual;
-                updateTabs();
-            }
-        }
+    private static int pageTitle(String url, String host) {
+        String path = PlatformNavigation.platformPath(url);
+        if (PlatformNavigation.LOGIN.equals(path)) return R.string.platform_login;
+        if ("/sign_up".equals(path)) return R.string.platform_signup;
+        if (PlatformNavigation.TOP_UP.equals(path)) return R.string.platform_topup;
+        if (PlatformNavigation.KEYS.equals(path)) return R.string.platform_keys;
+        if (path != null) return R.string.platform_home;
+        if ("accounts.google.com".equals(host) || "appleid.apple.com".equals(host)) return R.string.platform_provider;
+        if (within(host, "tenpay.com") || within(host, "alipay.com")) return R.string.platform_payment;
+        return R.string.platform_website;
+    }
+
+    private boolean canBind(WebView view) {
+        if (view == null || view != visibleWindow()) return false;
+        SiteClient document = (SiteClient) view.getWebViewClient();
+        return PlatformNavigation.canBind(view.getUrl(), document.rendered, windows.indexOf(view) == 0, document.failed);
     }
 
     private void updateProgress(int value) {
@@ -297,10 +241,56 @@ public final class OfficialPlatformActivity extends Activity {
     }
 
     private void showFailure(int message) {
-        showNotice(getString(message), getString(R.string.platform_retry), () -> openSection(section));
+        showNotice(getString(message), getString(R.string.platform_retry), this::restartEntry);
     }
 
     private final class SiteClient extends WebViewClient {
+        private boolean finished;
+        private boolean failed;
+        private String rendered;
+        private long revision;
+        private int lastHistoryIndex = -1;
+        private final PlatformNavigation.Document document = new PlatformNavigation.Document();
+
+        @Override public WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest request) {
+            if (request.isForMainFrame()) {
+                // Only the method and origin are needed. A POST or unknown document can never
+                // trigger a new GET automatically, even if its destination is the homepage.
+                document.observeRequest(request.getUrl().toString(), request.getMethod());
+            }
+            return null;
+        }
+
+        private void invalidate() {
+            rendered = null;
+            revision++;
+        }
+
+        private void afterRender(WebView view, String address) {
+            if (!finished || failed || view != visibleWindow()) return;
+            if (https(address) == null) return;
+            long id = ++revision;
+            view.postVisualStateCallback(id, new WebView.VisualStateCallback() {
+                @Override public void onComplete(long requestId) {
+                    if (isFinishing() || isDestroyed() || requestId != revision || failed
+                            || view != visibleWindow() || !address.equals(view.getUrl())) return;
+                    rendered = address;
+                    if (windows.indexOf(view) == 0) {
+                        int index = view.copyBackForwardList().getCurrentIndex();
+                        String resume = navigation.onVisibleRoot(address, document.isOfficialGet(address), index);
+                        if (resume != null) {
+                            invalidate();
+                            finished = false;
+                            bind.setVisibility(View.GONE);
+                            view.loadUrl(resume);
+                            return;
+                        }
+                    }
+                    showPage(address);
+                }
+            });
+        }
+
         @Override public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
             Uri target = request.getUrl();
             if (https(target.toString()) != null) return false;
@@ -315,35 +305,68 @@ public final class OfficialPlatformActivity extends Activity {
         }
 
         @Override public void onPageStarted(WebView view, String url, Bitmap favicon) {
-            if (view != visibleWindow()) return;
-            hideNotice();
-            showPage(url);
+            document.start(url);
+            invalidate();
+            finished = false;
+            failed = false;
+            if (view == visibleWindow()) {
+                hideNotice();
+                showPage(url);
+            }
         }
 
         @Override public void onPageCommitVisible(WebView view, String url) {
             if (view != visibleWindow()) return;
-            showPage(url);
+            showPage(view.getUrl());
             URI location = https(url);
             if (location != null && "accounts.google.com".equalsIgnoreCase(location.getHost())) {
                 showNotice(getString(R.string.platform_google), getString(R.string.platform_browser),
-                        () -> launch(new Intent(Intent.ACTION_VIEW, Uri.parse(sectionUrl(section)))
+                        () -> launch(new Intent(Intent.ACTION_VIEW, Uri.parse(restartUrl))
                                 .addCategory(Intent.CATEGORY_BROWSABLE)));
             }
         }
 
+        @Override public void onPageFinished(WebView view, String url) {
+            if (failed || !document.finishedAt(url, view.getUrl())) return;
+            finished = true;
+            afterRender(view, view.getUrl());
+        }
+
         @Override public void doUpdateVisitedHistory(WebView view, String url, boolean reload) {
-            if (view == visibleWindow()) showPage(url);
+            int index = view.copyBackForwardList().getCurrentIndex();
+            if (windows.indexOf(view) == 0) {
+                if (index < lastHistoryIndex) navigation.cancelContinuation();
+                navigation.noteLoginHistory(url, index);
+            }
+            lastHistoryIndex = index;
+            invalidate();
+            if (view == visibleWindow()) {
+                showPage(view.getUrl());
+                // pushState/replaceState can change an SPA route without another onPageFinished.
+                afterRender(view, url);
+            }
+        }
+
+        private void markFailed(WebView view, int message) {
+            failed = true;
+            invalidate();
+            if (view == visibleWindow()) {
+                bind.setVisibility(View.GONE);
+                showFailure(message);
+            }
         }
 
         @Override public void onReceivedError(WebView view, WebResourceRequest request, WebResourceError error) {
-            if (view == visibleWindow() && request.isForMainFrame()) showFailure(R.string.platform_load_failed);
+            if (request.isForMainFrame()) markFailed(view, R.string.platform_load_failed);
+        }
+
+        @Override public void onReceivedHttpError(WebView view, WebResourceRequest request, WebResourceResponse response) {
+            if (request.isForMainFrame()) markFailed(view, R.string.platform_load_failed);
         }
 
         @Override public void onReceivedSslError(WebView view, SslErrorHandler handler, SslError error) {
             handler.cancel();
-            if (view == visibleWindow() && error.getUrl().equals(view.getUrl())) {
-                showFailure(R.string.platform_ssl_failed);
-            }
+            if (error.getUrl().equals(view.getUrl())) markFailed(view, R.string.platform_ssl_failed);
         }
     }
 
@@ -358,7 +381,7 @@ public final class OfficialPlatformActivity extends Activity {
             // and window.close() retain their normal browser semantics.
             hideNotice();
             WebView popup = createWindow();
-            showOrigin(null);
+            showPage(null);
             ((WebView.WebViewTransport) result.obj).setWebView(popup);
             result.sendToTarget();
             return true;
@@ -431,12 +454,25 @@ public final class OfficialPlatformActivity extends Activity {
 
     private void back() {
         WebView current = visibleWindow();
-        if (current != null && current.canGoBack()) {
+        if (keyboardVisible && current != null) {
+            getSystemService(InputMethodManager.class).hideSoftInputFromWindow(current.getWindowToken(), 0);
+            return;
+        }
+        if (current != null && windows.size() > 1) {
+            if (current.canGoBack()) {
+                hideNotice();
+                current.goBack();
+            } else {
+                removeWindow(current);
+                revealWindow();
+            }
+            return;
+        }
+        navigation.cancelContinuation();
+        if (current != null && current.canGoBack()
+                && navigation.canGoBackWithinTask(current.copyBackForwardList().getCurrentIndex())) {
             hideNotice();
             current.goBack();
-        } else if (windows.size() > 1) {
-            removeWindow(current);
-            revealWindow();
         } else {
             returnToChat(false);
         }
@@ -454,7 +490,7 @@ public final class OfficialPlatformActivity extends Activity {
     @Override protected void onSaveInstanceState(Bundle state) {
         super.onSaveInstanceState(state);
         // Restore the official entry with a fresh GET. An interrupted payment form must not be reposted.
-        state.putString(EXTRA_ROUTE, section);
+        if (navigation != null) state.putBoolean(CONTINUATION_USED, navigation.continuationConsumed());
     }
 
     @Override protected void onResume() {

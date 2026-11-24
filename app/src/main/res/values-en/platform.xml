@@ -1,9 +1,14 @@
 <resources>
-    <string name="platform_close">Close platform</string>
-    <string name="platform_bind">Bind key</string>
-    <string name="platform_home">Platform</string>
+    <string name="platform_back">Back</string>
+    <string name="platform_bind">Use for chat</string>
+    <string name="platform_home">DeepSeek platform</string>
+    <string name="platform_login">Sign in to DeepSeek</string>
+    <string name="platform_signup">Create a DeepSeek account</string>
     <string name="platform_topup">Top up</string>
-    <string name="platform_keys">API keys</string>
+    <string name="platform_keys">API key management</string>
+    <string name="platform_provider">Account authorization</string>
+    <string name="platform_payment">Payment</string>
+    <string name="platform_website">Web page</string>
     <string name="platform_loading">Opening page…</string>
     <string name="platform_retry">Retry</string>
     <string name="platform_dismiss">Dismiss</string>

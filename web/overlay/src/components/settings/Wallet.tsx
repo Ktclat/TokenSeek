@@ -2,9 +2,9 @@ import { useEffect, useState } from 'react'
 import { useTranslate, type TranslationKey } from '../../i18n/index.js'
 import { getBalance } from '../../services/api/balance.js'
 import { classifyApiError } from '../../services/api/errors.js'
-import { platformUrls } from './OfficialPlatform.js'
+import { platformUrls, usePlatformLabels } from './OfficialPlatform.js'
 import { Button } from '../base/Button.js'
-import { closeSettings } from './settingsDialogState.js'
+import { closeSettings, pushSettings } from './settingsDialogState.js'
 import styles from './Wallet.module.css'
 
 export const WalletIcon = () => (
@@ -80,14 +80,18 @@ const walletMessage = (state: WalletState): TranslationKey | null => {
   return null
 }
 
-const BalanceCard = ({ bound, state, refresh }: { bound: boolean } & ReturnType<typeof useBalance>) => {
+const BalanceCard = ({ bound, state, refresh, summary = false }: {
+  bound: boolean; summary?: boolean
+} & ReturnType<typeof useBalance>) => {
   const t = useTranslate()
   const message = walletMessage(state)
   return (
     <div className={styles.balance} aria-label={t('walletTotal')}>
       <header>
         <span>{t('walletTotal')}</span>
-        {bound && <button type="button" className={styles.textButton} disabled={state.status === 'loading'} onClick={refresh}>
+        {summary ? (
+          <button type="button" className={styles.textButton} onClick={() => pushSettings('wallet')}>{t('wallet')}</button>
+        ) : bound && <button type="button" className={styles.textButton} disabled={state.status === 'loading'} onClick={refresh}>
           {t('walletRefresh')}
         </button>}
       </header>
@@ -95,10 +99,10 @@ const BalanceCard = ({ bound, state, refresh }: { bound: boolean } & ReturnType<
         {state.status === 'ready' && state.balance.balance_infos.map(info => (
           <div key={info.currency} className={styles.account}>
             <div className={styles.total}><small>{info.currency}</small> {info.total_balance}</div>
-            <dl className={styles.parts}>
+            {!summary && <dl className={styles.parts}>
               <div><dt>{t('walletCredit')}</dt><dd>{info.topped_up_balance}</dd></div>
               <div><dt>{t('walletGrant')}</dt><dd>{info.granted_balance}</dd></div>
-            </dl>
+            </dl>}
           </div>
         ))}
         {message && <p className={styles.status}>{t(message)}</p>}
@@ -109,17 +113,18 @@ const BalanceCard = ({ bound, state, refresh }: { bound: boolean } & ReturnType<
 
 export const BalanceSummary = ({ apiKey }: { apiKey: string }) => {
   const balance = useBalance(apiKey)
-  return <BalanceCard bound {...balance} />
+  return <BalanceCard bound summary {...balance} />
 }
 
 export const Wallet = ({ apiKey }: { apiKey: string | null }) => {
   const t = useTranslate()
+  const labels = usePlatformLabels()
   const balance = useBalance(apiKey)
   return (
-    <section className={styles.wallet} aria-label={t('walletTitle')}>
+    <section className={styles.wallet} aria-label={t('wallet')}>
       <BalanceCard bound={Boolean(apiKey)} {...balance} />
       <div className={styles.actions}>
-        <a className={styles.topUp} href={platformUrls.topUp} target="_blank" rel="noopener noreferrer">{t('walletRecharge')} <span aria-hidden="true">↗</span></a>
+        <a className={styles.topUp} href={platformUrls.topUp} target="_blank" rel="noopener noreferrer">{labels.topUp}</a>
         {balance.state.status === 'ready' && balance.state.balance.is_available &&
           <Button variant="outlined" onClick={closeSettings}>{t('walletChat')}</Button>}
       </div>
