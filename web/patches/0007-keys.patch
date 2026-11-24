@@ -1,0 +1,214 @@
+diff --git a/src/components/settings/useApiKeyForm.ts b/src/components/settings/useApiKeyForm.ts
+index 6b1f46f..9a97ab7 100644
+--- a/src/components/settings/useApiKeyForm.ts
++++ b/src/components/settings/useApiKeyForm.ts
+@@ -1,7 +1,7 @@
+ import { useLayoutEffect, useRef, useState } from 'react'
+ import { ApiError, verifyApiKey } from '../../services/api/client.js'
+ import { classifyApiError } from '../../services/api/errors.js'
+-import { setApiKey, useSettings } from '../../services/settings.js'
++import { changeKey, useSettings } from '../../services/settings.js'
+ import { useTranslate } from '../../i18n/index.js'
+ 
+ /** 输入 API Key 后先用 GET /models 校验，通过才保存 */
+@@ -35,20 +35,27 @@ export const useApiKeyForm = (onSaved?: () => void) => {
+     setVerifying(false)
+   }
+ 
+-  const submit = async () => {
++  const submit = async (name = '') => {
+     const apiKey = value.trim()
+     if (!apiKey || pending.current) {
+       return
+     }
+-    const previousKey = useSettings.getState().apiKey
++    const previousRing = useSettings.getState().keyRing
+     const controller = new AbortController()
+     pending.current = controller
+     setVerifying(true)
+     setFailure(null)
++    const timeout = setTimeout(() => {
++      if (pending.current === controller && !controller.signal.aborted) {
++        controller.abort()
++        setVerifying(false)
++        setFailure({ cause: new ApiError('network', 'Verification timed out') })
++      }
++    }, 15000)
+     try {
+       await verifyApiKey(apiKey, controller.signal)
+-      if (controller.signal.aborted || useSettings.getState().apiKey !== previousKey) return
+-      if (!setApiKey(apiKey)) {
++      if (controller.signal.aborted || useSettings.getState().keyRing !== previousRing) return
++      if (!changeKey('add', '', name, apiKey)) {
+         throw new ApiError('protocol', { key: 'walletStorageFailed' })
+       }
+       setValue('')
+@@ -56,6 +63,7 @@ export const useApiKeyForm = (onSaved?: () => void) => {
+     } catch (e) {
+       if (!controller.signal.aborted) setFailure({ cause: e })
+     } finally {
++      clearTimeout(timeout)
+       if (pending.current === controller) {
+         pending.current = null
+         if (!controller.signal.aborted) setVerifying(false)
+diff --git a/src/env.d.ts b/src/env.d.ts
+index 5a98927..140eb02 100644
+--- a/src/env.d.ts
++++ b/src/env.d.ts
+@@ -9,7 +9,7 @@ declare module '*.css' {}
+ declare const __API_ORIGIN__: string
+ 
+ interface Window {
+-  TokenSeekSecrets?: { readKey(): string; writeKey(value: string): boolean }
++  TokenSeekSecrets?: { manageKeys(action: string, id: string, name: string, secret: string): string }
+   TokenSeekFiles?: { saveBlob(blob: Blob, name: string): Promise<void> }
+ }
+ 
+diff --git a/src/services/api/client.ts b/src/services/api/client.ts
+index 5f6883c..3a11058 100644
+--- a/src/services/api/client.ts
++++ b/src/services/api/client.ts
+@@ -70,7 +70,7 @@ const readErrorResponse = async (
+ export const request = async (url: string, init: RequestInit): Promise<Response> => {
+   let response: Response
+   try {
+-    response = await fetch(url, init)
++    response = await fetch(url, { ...init, redirect: 'error', credentials: 'omit' })
+   } catch (error) {
+     if (init.signal?.aborted) {
+       throw error
+@@ -94,6 +94,7 @@ const anthropicHeaders = (apiKey: string, beta: boolean): Record<string, string>
+ export const verifyApiKey = async (apiKey: string, signal?: AbortSignal): Promise<void> => {
+   await request(`${API_ORIGIN}/models`, {
+     method: 'GET',
++    cache: 'no-store',
+     headers: { Authorization: `Bearer ${apiKey}` },
+     signal,
+   })
+diff --git a/src/services/chat/store.ts b/src/services/chat/store.ts
+index 63a90c5..f28e535 100644
+--- a/src/services/chat/store.ts
++++ b/src/services/chat/store.ts
+@@ -852,12 +852,11 @@ const refreshRequest = (sessionId: string, request: Request): Request => {
+  * - 历史轮次（仅进入上下文的）中没有 serverId 的附件，多为导入的图片：从最新的消息往前逐张补传，
+  *   失败静默跳过，该附件不进入本次请求，下次发送时再试。
+  */
+-const prepareFiles = async (sessionId: string, request: Request, signal: AbortSignal) => {
++const prepareFiles = async (sessionId: string, request: Request, apiKey: string, signal: AbortSignal) => {
+   const epoch = historyEpoch
+   // 服务端判定 file_id 失效时会清掉会话里的 serverId，先用最新消息替换请求快照，
+   // 否则快照里仍是旧 id，补传会直接复用它。
+   request = refreshRequest(sessionId, request)
+-  const apiKey = useSettings.getState().apiKey ?? ''
+   const serverIds = new Map<string, string>()
+   // 停止生成立即生效；上传本身不取消（输入框与其他消息可能共用同一任务），完成后照常写回 serverId
+   const aborted = new Promise<never>((_, reject) => {
+@@ -1023,6 +1022,10 @@ const streamReply = async (sessionId: string, initial: AssistantMessage, request
+     return
+   }
+   const controller = new AbortController()
++  const requestKey = useSettings.getState().apiKey ?? ''
++  const stopOnKeyChange = useSettings.subscribe((state, previous) => {
++    if (state.apiKey !== previous.apiKey) controller.abort()
++  })
+   if (model === FLASH && !getSession(sessionId)?.title) {
+     titleRequests.add(controller)
+   }
+@@ -1042,7 +1045,7 @@ const streamReply = async (sessionId: string, initial: AssistantMessage, request
+       let preparing = true
+       let receivedContent = false
+       try {
+-        const prepared = await prepareFiles(sessionId, request, controller.signal)
++        const prepared = await prepareFiles(sessionId, request, requestKey, controller.signal)
+         preparing = false
+         // 附件就绪后获取本轮信息；续写沿用原回答快照，重新生成的快照独立保存。
+         const latestReminder = prepared.prefix
+@@ -1061,7 +1064,7 @@ const streamReply = async (sessionId: string, initial: AssistantMessage, request
+           latestReminder
+         )
+         const events = streamMessage(
+-          useSettings.getState().apiKey ?? '',
++          requestKey,
+           {
+             model,
+             system: SYSTEM_PROMPT,
+@@ -1147,6 +1150,7 @@ const streamReply = async (sessionId: string, initial: AssistantMessage, request
+       }
+     }
+   } finally {
++    stopOnKeyChange()
+     titleRequests.delete(controller)
+     streamFlushes.delete(sessionId)
+     cancelAnimationFrame(frame)
+diff --git a/src/services/settings.ts b/src/services/settings.ts
+index a2cb635..c35b700 100644
+--- a/src/services/settings.ts
++++ b/src/services/settings.ts
+@@ -1,4 +1,5 @@
+ import { create } from 'zustand'
++import { accessKeys, type KeyAction, type KeyRing } from './keyRing.js'
+ import type { ChatModel } from './api/types.js'
+ import { FLASH, PRO } from './chat/models.js'
+ import type { TtsVoice } from './api/speech.js'
+@@ -12,6 +13,7 @@ export type ThemePreference = 'light' | 'dark' | 'system'
+ /** Android 密钥由宿主保存，其他偏好保存在当前设备。 */
+ type Settings = {
+   apiKey: string | null
++  keyRing: KeyRing
+   locale: Locale
+   themePreference: ThemePreference
+   location: UserLocation | null
+@@ -23,7 +25,6 @@ type Settings = {
+ }
+ 
+ const KEYS = {
+-  apiKey: 'chat-demo:api-key',
+   locale: 'chat-demo:locale',
+   location: 'chat-demo:location',
+   themePreference: 'chat-demo:theme-preference',
+@@ -91,12 +92,11 @@ const initialThemePreference = (): ThemePreference => {
+ /** 未保存过时使用服务端默认音色 stella（海星） */
+ const initialTtsVoice = (): TtsVoice => (read(KEYS.ttsVoice) === 'tide' ? 'tide' : 'stella')
+ 
+-// The Android app must never fall back to plaintext storage if its bridge is unavailable.
+-const isAndroidApp = () =>
+-  Boolean(window.TokenSeekSecrets) || window.location.origin === 'https://appassets.androidplatform.net'
++const initialRing = accessKeys('read')
+ 
+ export const useSettings = create<Settings>(() => ({
+-  apiKey: isAndroidApp() ? window.TokenSeekSecrets?.readKey() || null : read(KEYS.apiKey),
++  apiKey: initialRing?.apiKey ?? null,
++  keyRing: { activeId: initialRing?.activeId ?? null, entries: initialRing?.entries ?? [] },
+   locale: initialLocale(),
+   location: initialLocation(),
+   themePreference: initialThemePreference(),
+@@ -133,18 +133,20 @@ export const setTtsVoice = (ttsVoice: TtsVoice) => {
+   useSettings.setState({ ttsVoice })
+ }
+ 
+-export const setApiKey = (apiKey: string | null) => {
+-  if (isAndroidApp()) {
+-    if (!window.TokenSeekSecrets?.writeKey(apiKey ?? '')) {
+-      return false
+-    }
+-  } else {
+-    write(KEYS.apiKey, apiKey)
+-  }
+-  useSettings.setState({ apiKey })
++export function changeKey(action: Exclude<KeyAction, 'read'>, id = '', name = '', secret = '') {
++  const result = accessKeys(action, id, name, secret)
++  if (!result) return false
++  const { activeId, entries, apiKey } = result
++  useSettings.setState({ apiKey, keyRing: { activeId, entries } })
+   return true
+ }
+ 
++export const setApiKey = (apiKey: string | null) => {
++  if (apiKey) return changeKey('add', '', '', apiKey)
++  const id = useSettings.getState().keyRing.activeId
++  return id ? changeKey('remove', id) : true
++}
++
+ export const setThinking = (thinking: boolean) => {
+   write(KEYS.thinking, String(thinking))
+   useSettings.setState({ thinking })

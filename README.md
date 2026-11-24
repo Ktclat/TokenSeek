@@ -4,16 +4,18 @@ TokenSeek 把 DeepSeek 的聊天体验和开放平台账户余额放在同一个
 
 ## 第一次使用
 
-1. 打开 TokenSeek 的「钱包」，进入 DeepSeek 官方密钥管理页，登录自己的账户，创建 API Key。如果已有 Key，可以直接绑定。[官方密钥管理](https://platform.deepseek.com/api_keys)
-2. 返回 TokenSeek，绑定这把 Key。钱包用同一把 Key 读取余额，聊天也从对应的官方账户计费。Android 使用 Keystore 保护保存在本机的 Key。
-3. 点「前往官方充值」，在浏览器提供的应用内标签页中核对官方域名及登录账号，再选择可用支付方式并付款。请使用创建 Key 的同一个 DeepSeek 账号。在不支持自定义标签页的设备上，链接会在系统浏览器打开。[官方充值入口](https://platform.deepseek.com/top_up)
-4. 返回钱包查看刷新后的余额，再回到聊天发送消息。已绑定的 Key 会在下次启动时自动使用。
+1. 打开侧栏里的「DeepSeek 账户」，点「登录 DeepSeek 开放平台」。Android 会在带官方域名的浏览器标签页中打开 DeepSeek，由官方处理登录。已有官方 API Key 的用户也可以直接绑定。[官方开放平台](https://platform.deepseek.com/)
+2. 进入官方充值页，核对账号、选择支付方式并付款，金额进入该账号的 DeepSeek 开放平台余额。[官方充值入口](https://platform.deepseek.com/top_up)
+3. 在同一个官方账号下创建或管理 API Key。复制新建的 Key，回到 TokenSeek 填入，可为它取一个本机名称，然后点「验证并选用」。[官方密钥管理](https://platform.deepseek.com/api_keys)
+4. 回到账户页查看官方余额，再回到聊天。下次启动时会继续使用本机选中的 Key。支持底部工具栏的浏览器可以从官方页面底部直接前往下一步，其他设备可用返回键回到账户页继续。
+
+在「管理本机 API Key」中可以添加多把密钥、切换、改名或移除。Android 使用 Keystore 加密保存它们。旧版已绑定的 Key 会自动迁移。取消选用或移除当前 Key 后，再次发送消息前需要手动选一把。要撤销官方密钥，请到官方密钥管理页操作。
 
 ## 钱包怎样显示余额
 
 TokenSeek 调用官方 `GET /user/balance`，按币种分别显示总余额、充值余额和赠金。账户可用状态来自 `is_available`。余额接口返回当前快照，具体交易结果请以官方支付页面为准。[官方余额接口](https://api-docs.deepseek.com/zh-cn/api/get-user-balance/)
 
-截至 2026 年 11 月 24 日，DeepSeek 的公开接入指南要求用户在开放平台申请 API Key。暂未查到允许独立安卓应用替用户签发官方 Key、选定扣款钱包或创建官方充值订单的通用接口。第一版把这些操作交给用户在官方页面完成。DeepSeek Harness 的免填 Key 登录依赖其账户宿主服务。[首次调用 API](https://api-docs.deepseek.com/zh-cn/) · [官方错误码与充值指引](https://api-docs.deepseek.com/zh-cn/quick_start/error_codes/) · [Harness 凭证说明](https://deepseek-harness.github.io/deepseek-harness/reference/subsystems/credentials)
+截至 2026 年 11 月 24 日，DeepSeek 的公开接入指南要求用户在开放平台申请 API Key。网页登录状态由官方浏览器页面管理。TokenSeek 使用已验证并选用的 Key 查询余额和调用 API。充值、选择支付方式和创建官方 Key 均在 DeepSeek 官方页面完成。[首次调用 API](https://api-docs.deepseek.com/zh-cn/) · [官方错误码与充值指引](https://api-docs.deepseek.com/zh-cn/quick_start/error_codes/)
 
 ## 聊天功能对标
 
@@ -38,6 +40,7 @@ TokenSeek 调用官方 `GET /user/balance`，按币种分别显示总余额、�
 | 要修改的部分 | 源码入口 |
 | --- | --- |
 | 钱包界面和余额请求 | `web/overlay/src/components/settings/Wallet.tsx`、`web/overlay/src/services/api/balance.ts` |
+| 账户、官方页面衔接和本机密钥管理 | `web/overlay/src/components/settings/AccountFlow.tsx`、`web/overlay/src/components/settings/AccountKey.tsx`、`app/src/main/java/io/tokenseek/app/OfficialPortal.java` |
 | 官方 Demo 的聊天入口、设置及密钥存储适配 | `web/patches/0001-tokenseek.patch` |
 | 设置页面、模型选择、会话用量界面 | `web/overlay/src/components/settings/SettingsPages.tsx`、`web/overlay/src/components/chatInput/ModelChoice.tsx`、`web/overlay/src/components/messages/ConversationUsage.tsx` |
 | Android 打开官方充值页、系统返回和本地加密存储 | `app/src/main/java/io/tokenseek/app/` |

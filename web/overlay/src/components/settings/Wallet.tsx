@@ -79,35 +79,47 @@ const walletMessage = (state: WalletState): TranslationKey | null => {
   return null
 }
 
-export const Wallet = ({ apiKey }: { apiKey: string | null }) => {
+const BalanceCard = ({ bound, state, refresh }: { bound: boolean } & ReturnType<typeof useBalance>) => {
   const t = useTranslate()
-  const { state, refresh } = useBalance(apiKey)
   const message = walletMessage(state)
   return (
-    <section className={styles.wallet} aria-label={t('walletTitle')}>
-      <div className={styles.balance}>
-        <header>
-          <span>{t('walletTotal')}</span>
-          {apiKey && <button type="button" className={styles.textButton} disabled={state.status === 'loading'} onClick={refresh}>
-            {t('walletRefresh')}
-          </button>}
-        </header>
-        <div aria-live="polite">
-          {state.status === 'ready' && state.balance.balance_infos.map(info => (
-            <div key={info.currency} className={styles.account}>
-              <div className={styles.total}><small>{info.currency}</small> {info.total_balance}</div>
-              <dl className={styles.parts}>
-                <div><dt>{t('walletCredit')}</dt><dd>{info.topped_up_balance}</dd></div>
-                <div><dt>{t('walletGrant')}</dt><dd>{info.granted_balance}</dd></div>
-              </dl>
-            </div>
-          ))}
-          {message && <p className={styles.status}>{t(message)}</p>}
-        </div>
+    <div className={styles.balance} aria-label={t('walletTotal')}>
+      <header>
+        <span>{t('walletTotal')}</span>
+        {bound && <button type="button" className={styles.textButton} disabled={state.status === 'loading'} onClick={refresh}>
+          {t('walletRefresh')}
+        </button>}
+      </header>
+      <div aria-live="polite">
+        {state.status === 'ready' && state.balance.balance_infos.map(info => (
+          <div key={info.currency} className={styles.account}>
+            <div className={styles.total}><small>{info.currency}</small> {info.total_balance}</div>
+            <dl className={styles.parts}>
+              <div><dt>{t('walletCredit')}</dt><dd>{info.topped_up_balance}</dd></div>
+              <div><dt>{t('walletGrant')}</dt><dd>{info.granted_balance}</dd></div>
+            </dl>
+          </div>
+        ))}
+        {message && <p className={styles.status}>{t(message)}</p>}
       </div>
+    </div>
+  )
+}
+
+export const BalanceSummary = ({ apiKey }: { apiKey: string }) => {
+  const balance = useBalance(apiKey)
+  return <BalanceCard bound {...balance} />
+}
+
+export const Wallet = ({ apiKey }: { apiKey: string | null }) => {
+  const t = useTranslate()
+  const balance = useBalance(apiKey)
+  return (
+    <section className={styles.wallet} aria-label={t('walletTitle')}>
+      <BalanceCard bound={Boolean(apiKey)} {...balance} />
       <div className={styles.actions}>
         <a className={styles.topUp} href="https://platform.deepseek.com/top_up" target="_blank" rel="noopener noreferrer">{t('walletRecharge')} <span aria-hidden="true">↗</span></a>
-        {state.status === 'ready' && state.balance.is_available &&
+        {balance.state.status === 'ready' && balance.state.balance.is_available &&
           <Button variant="outlined" onClick={closeSettings}>{t('walletChat')}</Button>}
       </div>
       <p className={styles.hint}>{t('walletAccountHint')}</p>

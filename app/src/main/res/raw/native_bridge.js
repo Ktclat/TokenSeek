@@ -14,8 +14,7 @@
 
   Object.defineProperty(window, 'TokenSeekSecrets', {
     value: Object.freeze({
-      readKey: () => host.readKey(token),
-      writeKey: value => host.writeKey(token, value)
+      manageKeys: (action, id, name, secret) => host.manageKeys(token, action, id, name, secret)
     })
   });
 

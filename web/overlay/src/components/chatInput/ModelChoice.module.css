@@ -1,62 +1,84 @@
 .choice {
   flex-shrink: 0;
-  padding: 8px 12px 0;
+  padding: 2px 16px 0;
   cursor: default;
 }
 
-.line,
-.options {
+.line {
   display: flex;
   align-items: center;
+  gap: 2px;
 }
-.line {
-  gap: 8px;
-}
+
 .label,
 .choice p {
   color: var(--dsw-alias-label-secondary);
   font-size: 12px;
   line-height: 18px;
 }
+
+.label {
+  margin-inline-end: 6px;
+}
+
 .choice p {
-  margin: 4px 0 0;
+  margin: 0;
 }
 
-.options {
-  gap: 2px;
-  padding: 2px;
-  border-radius: 9px;
-  background: var(--dsw-alias-interactive-bg-hover);
-}
-
-.options button {
-  min-height: 30px;
-  min-width: 50px;
-  padding: 2px 10px;
+.line button {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  min-width: 48px;
+  padding: 0 8px;
   border: 0;
-  border-radius: 7px;
   background: transparent;
   color: var(--dsw-alias-label-secondary);
-  cursor: pointer;
   font: inherit;
-  font-size: 13px;
-  line-height: 18px;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 20px;
+  cursor: pointer;
 }
 
-.options button[aria-pressed='true'] {
+.line button span {
+  position: relative;
+}
+
+.line button[aria-pressed='true'] {
   color: var(--dsw-alias-brand-text);
-  background: var(--dsw-specific-input-major);
-  box-shadow: 0 1px 3px #0002;
   font-weight: 600;
 }
 
-.options button:disabled {
+.line button[aria-pressed='true'] span::after {
+  position: absolute;
+  right: 0;
+  bottom: -4px;
+  left: 0;
+  height: 2px;
+  border-radius: 1px;
+  background: currentColor;
+  content: '';
+}
+
+@media (hover: hover) {
+  .line button:hover:not(:disabled) {
+    color: var(--dsw-alias-brand-text);
+  }
+}
+
+.line button:focus-visible {
+  border-radius: 5px;
+  outline: 2px solid var(--dsw-alias-brand-text);
+  outline-offset: -4px;
+}
+
+.line button:disabled {
   cursor: default;
 }
-.options button:disabled[aria-pressed='false'] {
-  opacity: 0.52;
-}
-.options button:focus-visible {
-  outline: 2px solid var(--dsw-alias-brand-text);
-  outline-offset: 1px;
+
+.line button:disabled[aria-pressed='false'] {
+  opacity: 0.55;
 }

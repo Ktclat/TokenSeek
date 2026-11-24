@@ -5,9 +5,11 @@ import { regionCodes, getRegionName, provinces } from '../../services/location.j
 import { isChineseBrowser, setLocale, setLocation, setThemePreference, setTtsVoice, useSettings } from '../../services/settings.js'
 import { IconChevronRightOutline14, IconDataOutline16, IconLinkOutline16, IconSettingsOutline16 } from '../base/icons.js'
 import { useIsMobile, useMobileViewport } from '../../app/viewport.js'
+import { AccountFlow, AccountIcon, useAccountText } from './AccountFlow.js'
+import { Button } from '../base/Button.js'
 import { Wallet, WalletIcon } from './Wallet.js'
 import { AccountKey } from './AccountKey.js'
-import { backSettings, pushSettings, type SettingsSection } from './settingsDialogState.js'
+import { backSettings, closeSettings, pushSettings, type SettingsSection } from './settingsDialogState.js'
 import { SettingsRow, Options } from './SettingsRows.js'
 import { usePageText } from './SettingsPageText.js'
 import styles from './SettingsPages.module.css'
@@ -17,6 +19,7 @@ export const SettingsPages = ({ page, backDisabled, children }: {
 }) => {
   const t = useTranslate()
   const copy = usePageText()
+  const account = useAccountText()
   const titleRef = useRef<HTMLHeadingElement>(null)
   const frameRef = useMobileViewport(useIsMobile())
   const { apiKey, locale, ttsVoice, themePreference, location } = useSettings()
@@ -24,7 +27,7 @@ export const SettingsPages = ({ page, backDisabled, children }: {
   const city = province?.cities.find(item => item.code === location?.city)
   const localProvince = isChineseBrowser()
   const titles: Record<SettingsSection, string> = {
-    home: t('settings'), wallet: t('walletTitle'), keys: copy.keys, general: t('settingDialogAsideGeneralOptionLabel'),
+    home: t('settings'), account: account.title, wallet: t('walletTitle'), keys: copy.keys, general: t('settingDialogAsideGeneralOptionLabel'),
     data: t('settingDialogAsideDataOptionLabel'), theme: t('avatarMenuSettingsDialogThemeItemLabel'),
     language: t('settingsLocalePreference'), voice: t('settingsTtsVoice'),
     location: t('settingsLocation'), cities: t('settingsLocationCity'),
@@ -84,6 +87,7 @@ export const SettingsPages = ({ page, backDisabled, children }: {
         return <>
           <h2 className={styles.sectionLabel}>{copy.account}</h2>
           <div className={styles.group}>
+            <SettingsRow label={account.title} icon={<AccountIcon />} onClick={() => pushSettings('account')} />
             <SettingsRow label={t('wallet')} icon={<WalletIcon />} onClick={() => pushSettings('wallet')} />
             {keyRow}
           </div>
@@ -93,13 +97,18 @@ export const SettingsPages = ({ page, backDisabled, children }: {
             <SettingsRow label={titles.data} icon={<IconDataOutline16 />} onClick={() => pushSettings('data')} />
           </div>
         </>
+      case 'account':
+        return <AccountFlow apiKey={apiKey} />
       case 'wallet':
         return <>
           <Wallet key={apiKey ?? ''} apiKey={apiKey} />
           <div className={styles.group}>{keyRow}</div>
         </>
       case 'keys':
-        return <AccountKey key={apiKey ?? ''} />
+        return <>
+          <AccountKey key={apiKey ?? ''} />
+          {apiKey && <div className={styles.keyChat}><Button block onClick={closeSettings}>{t('walletChat')}</Button></div>}
+        </>
       case 'data':
         return children
       case 'general':

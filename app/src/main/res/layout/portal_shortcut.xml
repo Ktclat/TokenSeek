@@ -1,0 +1,6 @@
+<TextView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/portal_next"
+    android:layout_width="match_parent" android:layout_height="48dp"
+    android:gravity="center" android:fontFamily="sans-serif-medium"
+    android:clickable="true" android:focusable="true"
+    android:textColor="@color/portal_action" android:textSize="15sp" />

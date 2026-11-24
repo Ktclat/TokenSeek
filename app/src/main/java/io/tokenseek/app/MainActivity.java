@@ -36,6 +36,7 @@ import java.util.UUID;
 public final class MainActivity extends Activity {
     private static final int PICK_FILES = 40;
     private static final int REQUEST_MICROPHONE = 42;
+    private static final String BIND_URL = LocalSite.INDEX + "#bind-official-key";
     // The capability is inserted into a same-origin script only for the lifetime of this WebView.
     private final String capability = UUID.randomUUID().toString();
     private WebView web;
@@ -43,6 +44,7 @@ public final class MainActivity extends Activity {
     private Boolean pageDark;
     private KeyVault vault;
     private DocumentExport export;
+    private String portalBrowser;
     private PermissionRequest audioRequest;
     private ValueCallback<Uri[]> filesCallback;
 
@@ -83,7 +85,29 @@ public final class MainActivity extends Activity {
             getOnBackInvokedDispatcher().registerOnBackInvokedCallback(
                     OnBackInvokedDispatcher.PRIORITY_DEFAULT, this::handleBack);
         }
-        web.loadUrl(LocalSite.INDEX);
+        if (state != null) portalBrowser = state.getString("officialBrowser");
+        String action = getIntent().getAction();
+        web.loadUrl(OfficialPortal.BIND.equals(action) ? BIND_URL : LocalSite.INDEX);
+        if (state == null) openNextOfficialPage(action);
+    }
+
+    @Override protected void onSaveInstanceState(Bundle state) {
+        super.onSaveInstanceState(state);
+        state.putString("officialBrowser", portalBrowser);
+    }
+
+    @Override protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        if (OfficialPortal.BIND.equals(intent.getAction())) {
+            web.evaluateJavascript("location.replace(" + JSONObject.quote(BIND_URL) + ")", null);
+        } else {
+            openNextOfficialPage(intent.getAction());
+        }
+    }
+
+    private void openNextOfficialPage(String action) {
+        if (OfficialPortal.TOP_UP.equals(action)) openExternal(OfficialPortal.TOP_UP_URL);
+        else if (OfficialPortal.KEYS.equals(action)) openExternal(OfficialPortal.KEYS_URL);
     }
 
     private void applySystemBars() {
@@ -144,14 +168,18 @@ public final class MainActivity extends Activity {
             if (preferred != null && name.equals(preferred.activityInfo.packageName)) browsers.add(0, name);
             else browsers.add(name);
         }
+        // Keep the same browser profile throughout sign-in, payment and key creation.
+        if (portalBrowser != null && browsers.remove(portalBrowser)) browsers.add(0, portalBrowser);
         for (String browser : browsers) {
             Bundle session = new Bundle();
             session.putBinder("android.support.customtabs.extra.SESSION", null);
             Intent tab = new Intent(Intent.ACTION_VIEW, uri).setPackage(browser).putExtras(session)
                     .putExtra("android.support.customtabs.extra.ENABLE_URLBAR_HIDING", false)
                     .putExtra("android.support.customtabs.extra.TITLE_VISIBILITY", 1);
+            OfficialPortal.addNextStep(this, tab, uri);
             try {
                 startActivity(tab);
+                portalBrowser = browser;
                 return true;
             } catch (ActivityNotFoundException unavailable) {
                 // The browser can be removed between discovery and launch.
@@ -285,11 +313,8 @@ public final class MainActivity extends Activity {
                 });
             }
         }
-        @JavascriptInterface public String readKey(String token) {
-            return capability.equals(token) ? vault.read() : "";
-        }
-        @JavascriptInterface public boolean writeKey(String token, String value) {
-            return capability.equals(token) && vault.write(value);
+        @JavascriptInterface public String manageKeys(String token, String action, String id, String name, String secret) {
+            return capability.equals(token) ? vault.manage(action, id, name, secret) : "";
         }
         @JavascriptInterface public void openLink(String token, String url) {
             if (capability.equals(token) && url != null) {

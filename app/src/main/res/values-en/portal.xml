@@ -1,0 +1,5 @@
+<resources>
+    <string name="portal_top_up">Top up on DeepSeek</string>
+    <string name="portal_keys">Manage keys on DeepSeek</string>
+    <string name="portal_bind">Return to TokenSeek to add a key</string>
+</resources>

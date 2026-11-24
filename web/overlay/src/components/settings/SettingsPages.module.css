@@ -102,3 +102,5 @@
   background: var(--dsw-alias-bg-base); color: var(--dsw-alias-state-error-primary); font: inherit;
   font-size: 15px; cursor: pointer;
 }
+
+.keyChat { margin-top: 16px; }
