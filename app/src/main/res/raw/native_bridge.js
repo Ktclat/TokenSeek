@@ -2,6 +2,16 @@
   if (window !== window.top || location.origin !== 'https://appassets.androidplatform.net') return;
   const host = window.TokenSeekHost;
   const token = '__TOKEN__';
+  // Use the same theme for system bars when the user overrides the device theme.
+  document.addEventListener('DOMContentLoaded', () => {
+    const syncTheme = () => host.setDarkTheme?.(token, document.body.hasAttribute('data-ds-dark-theme'));
+    new MutationObserver(syncTheme).observe(document.body, {
+      attributes: true,
+      attributeFilter: ['data-ds-dark-theme']
+    });
+    syncTheme();
+  }, { once: true });
+
   Object.defineProperty(window, 'TokenSeekSecrets', {
     value: Object.freeze({
       readKey: () => host.readKey(token),

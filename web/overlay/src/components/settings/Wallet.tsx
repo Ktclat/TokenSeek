@@ -2,9 +2,7 @@ import { useEffect, useState } from 'react'
 import { useTranslate, type TranslationKey } from '../../i18n/index.js'
 import { getBalance } from '../../services/api/balance.js'
 import { classifyApiError } from '../../services/api/errors.js'
-import { setApiKey } from '../../services/settings.js'
 import { Button } from '../base/Button.js'
-import { showToast } from '../base/toastState.js'
 import { closeSettings } from './settingsDialogState.js'
 import styles from './Wallet.module.css'
 
@@ -84,15 +82,7 @@ const walletMessage = (state: WalletState): TranslationKey | null => {
 export const Wallet = ({ apiKey }: { apiKey: string | null }) => {
   const t = useTranslate()
   const { state, refresh } = useBalance(apiKey)
-  const [confirmRemove, setConfirmRemove] = useState(false)
   const message = walletMessage(state)
-  const remove = () => {
-    if (!confirmRemove) {
-      setConfirmRemove(true)
-    } else if (!setApiKey(null)) {
-      showToast({ key: 'walletStorageFailed', type: 'error' })
-    }
-  }
   return (
     <section className={styles.wallet} aria-label={t('walletTitle')}>
       <div className={styles.balance}>
@@ -121,11 +111,6 @@ export const Wallet = ({ apiKey }: { apiKey: string | null }) => {
           <Button variant="outlined" onClick={closeSettings}>{t('walletChat')}</Button>}
       </div>
       <p className={styles.hint}>{t('walletAccountHint')}</p>
-      <div className={styles.keyLinks}>
-        <a href="https://platform.deepseek.com/api_keys" target="_blank" rel="noopener noreferrer">{t('walletKeys')} <span aria-hidden="true">↗</span></a>
-        {apiKey && <button type="button" className={styles.textButton} onClick={remove}>{t(confirmRemove ? 'walletConfirmRemove' : 'walletRemove')}</button>}
-        {confirmRemove && <button type="button" className={styles.textButton} onClick={() => setConfirmRemove(false)}>{t('cancel')}</button>}
-      </div>
     </section>
   )
 }

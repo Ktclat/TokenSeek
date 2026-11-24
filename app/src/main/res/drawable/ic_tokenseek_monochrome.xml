@@ -1,0 +1,11 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp"
+    android:viewportWidth="108" android:viewportHeight="108">
+    <!-- Android's themed icons tint the alpha mask. Eyes and smile are cut out. -->
+    <group android:translateX="18" android:translateY="18"
+        android:pivotX="36" android:pivotY="36" android:scaleX="0.91" android:scaleY="0.91">
+        <path android:fillColor="#FFFFFFFF" android:fillType="evenOdd"
+            android:pathData="M5,37 C6,26 12,21 22,20 S38,22 44,28 C49,33 53,33 55,30 Q56,28 54.5,25.5 C51,21 51.5,16 54,12 Q62,14 62,21 Q66,19 69,22 Q68,30 61,31 Q59,44 46,52.5 C45.5,58 42,60.5 39,60 Q36,59 34,57 C15,60.5 4,52 5,37 Z M9,36.8 C9,32 12.7,32.5 12.3,36 C12,40.5 8.5,41 9,36.8 Z M21,38 Q22,32 26,33 Q29,33.5 31,31.7 Q31,34 29,35 Q29,41 25.5,42 Q20,44 21,38 Z M11.5,41.5 Q12,40.5 12.5,41 C14.2,43 16,42.3 17.5,40 Q19,39.5 18.5,41 Q15.3,47 11.5,42 Z M32.5,47.5 Q34,53 37,55.5 Q38,58 36,56.7 Q32,54 31,49 Q30.5,47 32.5,47.5 Z" />
+        <path android:fillColor="#FFFFFFFF" android:pathData="M22.8,19.1 C20,17.7 15.1,16.9 14.6,14.2 C14.1,11.5 16.9,10.5 19,12.1 C20.9,13.5 22,16 22.8,19.1 Z M24.7,17.6 C24.5,14.6 24.8,10.9 26.8,8.7 C28.2,7.1 30.9,7.4 31.3,9.4 C31.8,11.8 28,13.1 24.7,17.6 Z" />
+    </group>
+</vector>

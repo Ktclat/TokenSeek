@@ -1,0 +1,461 @@
+diff --git a/src/components/settings/SettingsDialog.tsx b/src/components/settings/SettingsDialog.tsx
+index 803f363..07536df 100644
+--- a/src/components/settings/SettingsDialog.tsx
++++ b/src/components/settings/SettingsDialog.tsx
+@@ -1,156 +1,47 @@
+ import clsx from 'clsx'
+ import { useRef, useState, type ReactNode } from 'react'
+-import {
+-  IconDarkOutline16,
+-  IconDataOutline16,
+-  IconDownloadOutline16,
+-  IconFollowsystemOutline16,
+-  IconLightOutline16,
+-  IconLoadingOutline16,
+-  IconSettingsOutline16,
+-  IconUploadOutline14,
+-} from '../base/icons.js'
+-import {
+-  BackupError,
+-  clearHistory,
+-  exportHistory,
+-  importHistory,
+-} from '../../services/chat/backup.js'
+-import { useIsMobile } from '../../app/viewport.js'
++import { IconDownloadOutline16, IconLoadingOutline16, IconUploadOutline14 } from '../base/icons.js'
++import { BackupError, clearHistory, exportHistory, importHistory } from '../../services/chat/backup.js'
+ import { useChatStore } from '../../services/chat/store.js'
+-import { regionCodes, getRegionName, provinces } from '../../services/location.js'
+-import {
+-  isChineseBrowser,
+-  setLocale,
+-  setLocation,
+-  setThemePreference,
+-  setTtsVoice,
+-  useSettings,
+-  type ThemePreference,
+-} from '../../services/settings.js'
+ import { useTranslate, type TranslationKey, type TranslationMessage } from '../../i18n/index.js'
+ import { Button } from '../base/Button.js'
+ import { Modal } from '../base/Modal.js'
+-import { Select } from '../base/Select.js'
+ import { showToast } from '../base/toastState.js'
+-import { ApiKeyConfirm, ApiKeyField, useApiKeyEditor } from './ApiKeyField.js'
+-import { Wallet, WalletIcon } from './Wallet.js'
+-import { closeSettings, useSettingsDialog, type SettingsSection } from './settingsDialogState.js'
++import { useSettingsDialog } from './settingsDialogState.js'
++import { SettingsPages } from './SettingsPages.js'
++import pageStyles from './SettingsPages.module.css'
+ import styles from './Settings.module.css'
+ 
+-/**
+- * 设置弹窗：分「通用设置」（主题、语言、朗读音色、位置）与「数据管理」（API Key、导入、导出、删除）。
+- * 桌面端为居中弹窗、左侧导航；移动端为底部弹层、导航横排在内容上方
+- */
+ export const SettingsDialog = () => {
+-  const open = useSettingsDialog((state) => state.open)
+-  const historyImport = useHistoryImport()
+-  return open ? <SettingsContent historyImport={historyImport} /> : null
+-}
+-
+-const sections: { value: SettingsSection; label: TranslationKey; icon: ReactNode }[] = [
+-  { value: 'wallet', label: 'wallet', icon: <WalletIcon /> },
+-  {
+-    value: 'general',
+-    label: 'settingDialogAsideGeneralOptionLabel',
+-    icon: <IconSettingsOutline16 />,
+-  },
+-  { value: 'data', label: 'settingDialogAsideDataOptionLabel', icon: <IconDataOutline16 /> },
+-]
+-
+-const SettingsContent = ({
+-  historyImport,
+-}: {
+-  historyImport: ReturnType<typeof useHistoryImport>
+-}) => {
+   const t = useTranslate()
+-  const boundKey = useSettings((state) => state.apiKey)
+-  // 打开时按调用方指定的分组选中，之后在弹窗内切换
+-  const [section, setSection] = useState(() => useSettingsDialog.getState().section)
++  const page = useSettingsDialog(state => state.stack.at(-1))
++  const historyImport = useHistoryImport()
+   const historyDelete = useHistoryDelete()
+-  const replacingHistory = useChatStore((state) => state.importingHistory)
++  const replacingHistory = useChatStore(state => state.importingHistory)
+   const historyBusy = historyImport.busy || historyDelete.busy || replacingHistory
++  if (!page) return null
+   return (
+     <>
+-      <Modal
+-        title={section === 'wallet' ? t('walletTitle') : t('settings')}
+-        closable
+-        className={styles.dialog}
+-        mainClassName={styles.dialogMain}
+-        onClose={() => {
+-          if (!historyDelete.busy) {
+-            historyImport.dismiss()
+-            closeSettings()
+-          }
+-        }}
+-      >
+-        <div role="tablist" className={styles.navigation}>
+-          {sections.map((item) => (
+-            <button
+-              key={item.value}
+-              type="button"
+-              role="tab"
+-              aria-selected={section === item.value}
+-              className={clsx(styles.navItem, section === item.value && styles.navItemActive)}
+-              onClick={() => setSection(item.value)}
+-            >
+-              {item.icon}
+-              {t(item.label)}
+-            </button>
+-          ))}
++      <SettingsPages page={page} backDisabled={historyDelete.busy}>
++        <div className={pageStyles.group}>
++          <ImportHistory historyImport={historyImport} disabled={historyBusy} />
++          <ExportHistory disabled={historyBusy} />
+         </div>
+-        <div role="tabpanel" className={styles.content}>
+-          {section === 'general' ? (
+-            <>
+-              <ThemeSetting />
+-              <LocaleSetting />
+-              <TtsVoiceSetting />
+-              <LocationSetting />
+-            </>
+-          ) : section === 'wallet' ? (
+-            <WalletSettings key={boundKey ?? ''} />
+-          ) : (
+-            <>
+-              <ImportHistory historyImport={historyImport} disabled={historyBusy} />
+-              <ExportHistory disabled={historyBusy} />
+-              <SettingCell
+-                label={t('deleteAllSessions')}
+-                status={null}
+-                action={
+-                  <Button
+-                    variant="dangerOutlined"
+-                    size="m"
+-                    className={styles.cellButton}
+-                    disabled={historyBusy}
+-                    onClick={historyDelete.open}
+-                  >
+-                    {t('delete')}
+-                  </Button>
+-                }
+-              />
+-            </>
+-          )}
++        <div className={pageStyles.group}>
++          <SettingCell
++            label={t('deleteAllSessions')}
++            status={null}
++            action={<Button variant="dangerOutlined" size="m" className={styles.cellButton}
++              disabled={historyBusy} onClick={historyDelete.open}>{t('delete')}</Button>}
++          />
+         </div>
+-      </Modal>
++      </SettingsPages>
+       {historyImport.file ? <ImportConfirm historyImport={historyImport} /> : null}
+       {historyDelete.opened ? <DeleteAllConfirm historyDelete={historyDelete} /> : null}
+     </>
+   )
+ }
+ 
+-// Remount both the wallet and its pending key verification when the binding changes.
+-const WalletSettings = () => {
+-  const editor = useApiKeyEditor()
+-  const isMobile = useIsMobile()
+-  return (
+-    <>
+-      <Wallet apiKey={editor.apiKey} />
+-      <ApiKeyField editor={editor} />
+-      {isMobile ? <ApiKeyConfirm editor={editor} /> : null}
+-    </>
+-  )
+-}
+-
+ /** 删除确认保留在设置之上；失败可重试，成功只关闭确认弹窗。 */
+ const DeleteAllConfirm = ({
+   historyDelete,
+@@ -224,115 +115,6 @@ const useHistoryDelete = () => {
+   }
+ }
+ 
+-const LocationSetting = () => {
+-  const t = useTranslate()
+-  const locale = useSettings((state) => state.locale)
+-  const location = useSettings((state) => state.location)
+-  const province =
+-    location?.region === 'CN'
+-      ? provinces.find((item) => item.code === location.province)
+-      : undefined
+-
+-  return (
+-    <SettingCell
+-      label={t('settingsLocation')}
+-      status={null}
+-      className={styles.locationCell}
+-      action={
+-        <div className={styles.locationSelectors}>
+-          {isChineseBrowser() ? (
+-            <>
+-              <Select
+-                ariaLabel={t('settingsLocationProvince')}
+-                className={styles.provinceSelect}
+-                value={province?.code ?? ''}
+-                placeholder={t('settingsLocationProvince')}
+-                options={provinces.map((item) => ({ value: item.code, label: item.name }))}
+-                onChange={(value) => {
+-                  if (value !== province?.code) {
+-                    setLocation({ region: 'CN', province: value })
+-                  }
+-                }}
+-              />
+-              <Select
+-                ariaLabel={t('settingsLocationCity')}
+-                className={styles.citySelect}
+-                value={province ? (location?.city ?? '') : ''}
+-                disabled={!province?.cities.length}
+-                placeholder={t('settingsLocationCity')}
+-                options={
+-                  province?.cities.map((item) => ({ value: item.code, label: item.name })) ?? []
+-                }
+-                onChange={(value) => {
+-                  if (province) {
+-                    setLocation({ region: 'CN', province: province.code, city: value })
+-                  }
+-                }}
+-              />
+-            </>
+-          ) : (
+-            <Select
+-              ariaLabel={t('settingsLocationRegion')}
+-              className={styles.regionSelect}
+-              value={location?.region ?? ''}
+-              placeholder={t('settingsLocationRegion')}
+-              options={regionCodes
+-                .map((code) => ({ value: code, label: getRegionName(code, locale) }))
+-                .sort((a, b) => a.label.localeCompare(b.label, locale))}
+-              onChange={(value) => setLocation({ region: value })}
+-            />
+-          )}
+-        </div>
+-      }
+-    />
+-  )
+-}
+-
+-const LocaleSetting = () => {
+-  const t = useTranslate()
+-  const locale = useSettings((state) => state.locale)
+-  return (
+-    <SettingCell
+-      label={t('settingsLocalePreference')}
+-      status={null}
+-      action={
+-        <Select
+-          ariaLabel={t('settingsLocalePreference')}
+-          value={locale}
+-          options={[
+-            { value: 'zh-CN', label: t('settingsLocaleZhCN'), lang: 'zh-CN' },
+-            { value: 'en-US', label: t('settingsLocaleEnUS'), lang: 'en' },
+-          ]}
+-          onChange={setLocale}
+-        />
+-      }
+-    />
+-  )
+-}
+-
+-/** 朗读音色：stella（海星，女声）/ tide（暗潮，男声） */
+-const TtsVoiceSetting = () => {
+-  const t = useTranslate()
+-  const ttsVoice = useSettings((state) => state.ttsVoice)
+-  return (
+-    <SettingCell
+-      label={t('settingsTtsVoice')}
+-      status={null}
+-      action={
+-        <Select
+-          ariaLabel={t('settingsTtsVoice')}
+-          value={ttsVoice}
+-          options={[
+-            { value: 'stella', label: t('settingsTtsVoiceStella') },
+-            { value: 'tide', label: t('settingsTtsVoiceTide') },
+-          ]}
+-          onChange={setTtsVoice}
+-        />
+-      }
+-    />
+-  )
+-}
+-
+ /** 覆盖导入的二次确认，叠在设置弹窗上 */
+ const ImportConfirm = ({
+   historyImport,
+@@ -361,57 +143,6 @@ const ImportConfirm = ({
+   )
+ }
+ 
+-const themeOptions: { value: ThemePreference; label: TranslationKey; icon: ReactNode }[] = [
+-  {
+-    value: 'light',
+-    label: 'avatarMenuSettingsDialogThemeSelectLightOption',
+-    icon: <IconLightOutline16 />,
+-  },
+-  {
+-    value: 'dark',
+-    label: 'avatarMenuSettingsDialogThemeSelectDarkOption',
+-    icon: <IconDarkOutline16 />,
+-  },
+-  {
+-    value: 'system',
+-    label: 'avatarMenuSettingsDialogThemeSelectSystemOption',
+-    icon: <IconFollowsystemOutline16 />,
+-  },
+-]
+-
+-/**
+- * 主题项：标题下方浅色 / 深色 / 跟随系统三个选块。
+- * 与下方语言选项连续排列。
+- */
+-const ThemeSetting = () => {
+-  const t = useTranslate()
+-  const themePreference = useSettings((state) => state.themePreference)
+-  const label = t('avatarMenuSettingsDialogThemeItemLabel')
+-  return (
+-    <div className={styles.theme}>
+-      {label}
+-      <div role="radiogroup" aria-label={label} className={styles.themeOptions}>
+-        {themeOptions.map((option) => (
+-          <button
+-            key={option.value}
+-            type="button"
+-            role="radio"
+-            aria-checked={themePreference === option.value}
+-            className={clsx(
+-              styles.themeOption,
+-              themePreference === option.value && styles.themeOptionSelected
+-            )}
+-            onClick={() => setThemePreference(option.value)}
+-          >
+-            {option.icon}
+-            {t(option.label)}
+-          </button>
+-        ))}
+-      </div>
+-    </div>
+-  )
+-}
+-
+ /** `reason` 为失败原因的文案 key，展示时按当前语言翻译后填入 `message` 参数。 */
+ type Status = (TranslationMessage & { error?: boolean; reason?: TranslationKey }) | null
+ 
+@@ -490,10 +221,6 @@ const useHistoryImport = () => {
+     status,
+     select: setFile,
+     cancel: () => setFile(null),
+-    dismiss: () => {
+-      setFile(null)
+-      setStatus(null)
+-    },
+     confirm,
+   }
+ }
+diff --git a/src/components/settings/settingsDialogState.ts b/src/components/settings/settingsDialogState.ts
+index 55de1a7..70438ff 100644
+--- a/src/components/settings/settingsDialogState.ts
++++ b/src/components/settings/settingsDialogState.ts
+@@ -1,25 +1,27 @@
+ import { create } from 'zustand'
+ import { useSettings } from '../../services/settings.js'
+ 
+-/** 设置弹窗的分组：通用设置 / 数据管理 */
+-export type SettingsSection = 'wallet' | 'general' | 'data'
++export type SettingsSection =
++  | 'home' | 'wallet' | 'keys' | 'general' | 'data'
++  | 'theme' | 'language' | 'voice' | 'location' | 'cities'
+ 
+-/** 设置弹窗：侧边栏底部、没有 API Key 时的操作与 401 提示都可以打开；section 为打开时选中的分组 */
+-export const useSettingsDialog = create(() => ({
+-  open: false,
+-  section: 'general' as SettingsSection,
+-}))
++type SettingsNavigation = { stack: SettingsSection[] }
++
++export const useSettingsDialog = create<SettingsNavigation>(() => ({ stack: [] }))
+ 
+ export const openSettings = (section: SettingsSection) =>
+-  useSettingsDialog.setState({ open: true, section })
++  useSettingsDialog.setState({ stack: [section] })
++
++export const pushSettings = (section: SettingsSection) =>
++  useSettingsDialog.setState(({ stack }) => ({ stack: [...stack, section] }))
++
++export const backSettings = (steps = 1) =>
++  useSettingsDialog.setState(({ stack }) => ({ stack: stack.slice(0, -steps) }))
+ 
+-export const closeSettings = () => useSettingsDialog.setState({ open: false })
++export const closeSettings = () => useSettingsDialog.setState({ stack: [] })
+ 
+-/** 没有 API Key 时打开设置并选中 API Key 所在的「钱包」，返回是否已有 Key */
+ export const ensureApiKey = () => {
+-  if (useSettings.getState().apiKey) {
+-    return true
+-  }
++  if (useSettings.getState().apiKey) return true
+   openSettings('wallet')
+   return false
+ }
+diff --git a/src/components/settings/useApiKeyForm.ts b/src/components/settings/useApiKeyForm.ts
+index 5b71ff3..6b1f46f 100644
+--- a/src/components/settings/useApiKeyForm.ts
++++ b/src/components/settings/useApiKeyForm.ts
+@@ -29,6 +29,12 @@ export const useApiKeyForm = (onSaved?: () => void) => {
+                     : String(cause),
+             })
+ 
++  const cancelVerification = () => {
++    pending.current?.abort()
++    pending.current = null
++    setVerifying(false)
++  }
++
+   const submit = async () => {
+     const apiKey = value.trim()
+     if (!apiKey || pending.current) {
+@@ -50,10 +56,12 @@ export const useApiKeyForm = (onSaved?: () => void) => {
+     } catch (e) {
+       if (!controller.signal.aborted) setFailure({ cause: e })
+     } finally {
+-      pending.current = null
+-      if (!controller.signal.aborted) setVerifying(false)
++      if (pending.current === controller) {
++        pending.current = null
++        if (!controller.signal.aborted) setVerifying(false)
++      }
+     }
+   }
+ 
+-  return { value, setValue, verifying, error, submit }
++  return { value, setValue, verifying, error, submit, cancelVerification }
+ }
+diff --git a/src/components/sider/Sider.tsx b/src/components/sider/Sider.tsx
+index d8fde01..d76b156 100644
+--- a/src/components/sider/Sider.tsx
++++ b/src/components/sider/Sider.tsx
+@@ -100,7 +100,10 @@ export const Sider = ({ mobile = false }: { mobile?: boolean }) => {
+           <span className={styles.settingsIcon}><WalletIcon /></span>
+           <span className={styles.settingsLabel}>{t('wallet')}</span>
+         </button>
+-        <button type="button" className={styles.settings} onClick={() => openSettings('general')}>
++        <button type="button" className={styles.settings} onClick={() => {
++          closeMobileSider()
++          openSettings('home')
++        }}>
+           <span className={styles.settingsIcon}>
+             <IconSettingsOutline16 />
+           </span>

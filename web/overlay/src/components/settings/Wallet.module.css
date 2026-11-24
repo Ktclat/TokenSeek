@@ -7,7 +7,7 @@
   padding: 20px;
   border: 1px solid var(--dsw-alias-border-l2);
   border-radius: 18px;
-  background: var(--dsw-specific-sidebar-fill);
+  background: var(--dsw-alias-bg-base);
 
   header {
     display: flex;
@@ -45,7 +45,7 @@
   dd { margin: 2px 0 0; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
 }
 .status { margin: 12px 0 2px; }
-.actions, .keyLinks { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; }
+.actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; }
 .actions { margin-top: 16px; }
 .topUp {
   display: inline-flex;
@@ -61,8 +61,3 @@
   font-weight: 500;
 }
 .hint { margin: 10px 0 16px; color: var(--dsw-alias-label-secondary); font-size: 13px; }
-.keyLinks {
-  padding-top: 12px;
-  border-top: 1px solid var(--dsw-alias-border-l2);
-  a { padding: 5px 0; color: var(--dsw-alias-brand-text); text-decoration: none; }
-}

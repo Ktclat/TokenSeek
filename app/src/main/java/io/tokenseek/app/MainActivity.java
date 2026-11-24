@@ -40,6 +40,7 @@ public final class MainActivity extends Activity {
     private final String capability = UUID.randomUUID().toString();
     private WebView web;
     private FrameLayout container;
+    private Boolean pageDark;
     private KeyVault vault;
     private DocumentExport export;
     private PermissionRequest audioRequest;
@@ -86,9 +87,10 @@ public final class MainActivity extends Activity {
     }
 
     private void applySystemBars() {
-        boolean dark = (getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK)
+        boolean systemDark = (getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK)
                 == Configuration.UI_MODE_NIGHT_YES;
-        int background = dark ? Color.rgb(23, 23, 23) : Color.WHITE;
+        boolean dark = pageDark != null ? pageDark : systemDark;
+        int background = dark ? Color.rgb(21, 21, 23) : Color.WHITE;
         container.setBackgroundColor(background);
         web.setBackgroundColor(background);
         getWindow().setStatusBarColor(background);
@@ -275,6 +277,14 @@ public final class MainActivity extends Activity {
     }
 
     private final class Bridge {
+        @JavascriptInterface public void setDarkTheme(String token, boolean dark) {
+            if (capability.equals(token)) {
+                runOnUiThread(() -> {
+                    pageDark = dark;
+                    applySystemBars();
+                });
+            }
+        }
         @JavascriptInterface public String readKey(String token) {
             return capability.equals(token) ? vault.read() : "";
         }

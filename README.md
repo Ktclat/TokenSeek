@@ -19,6 +19,12 @@ TokenSeek 调用官方 `GET /user/balance`，按币种分别显示总余额、�
 
 本版本固定使用 DeepSeek 官方 `chat-demo` v0.1.4。上游提供流式回答、深度思考、智能搜索及来源引用、阅读链接、附件问答、语音输入与朗读、会话管理、消息编辑与重新生成，以及历史记录导入导出。会话存储在本机。官方 App 的云端历史同步需要另行接入。TokenSeek 是独立客户端。[锁定版本的源码](https://github.com/deepseek-ai/chat-demo/tree/v0.1.4) · [官方功能对照](https://api-docs.deepseek.com/zh-cn/guides/build_a_chatbot/)
 
+## 模型与用量
+
+在聊天输入区直接选择 Flash 或 Pro。首次打开时预选 Flash，已有会话各自保存模型选择。重新生成回答时使用当前选择，续写已有回答时沿用该回答的模型。Flash 支持本客户端的智能搜索、链接阅读和附件问答。Pro 可用于文本对话和深度思考。如果当前分支中已有附件或网页工具结果，界面会说明继续使用 Flash 的原因。[官方模型与能力说明](https://api-docs.deepseek.com/zh-cn/guides/anthropic_api/) · [DSH 会话模型选择](https://github.com/deepseek-ai/deepseek-harness/blob/master/packages/client/ui-model-selection/README.md)
+
+在聊天末尾展开「对话用量」，可看整个会话，也可逐条查看回答。会话累计包含重新生成的各个分支及续写。输入总数包含缓存命中，输出总数包含思考 token。数值来自 DeepSeek 对话接口返回的用量记录。中断、缺少最终记录或从旧版导入的会话，页面会提示可统计的范围。充值及实际扣费以官方账户为准。[Messages API 用量字段](https://api-docs.deepseek.com/zh-cn/api/create-message/) · [DSH 聊天用量展示](https://github.com/deepseek-ai/deepseek-harness/blob/master/packages/client/ui-chat/README.md)
+
 ## 构建安卓版
 
 需要 JDK 17、Android SDK Platform 35 与 Build Tools 35.0.0、Node.js 24、npm、Git 和 Bash。安装 Android SDK 后，设置 `ANDROID_HOME` 或在 `local.properties` 指定 `sdk.dir`。首次构建需要联网下载工具和依赖。
@@ -33,5 +39,6 @@ TokenSeek 调用官方 `GET /user/balance`，按币种分别显示总余额、�
 | --- | --- |
 | 钱包界面和余额请求 | `web/overlay/src/components/settings/Wallet.tsx`、`web/overlay/src/services/api/balance.ts` |
 | 官方 Demo 的聊天入口、设置及密钥存储适配 | `web/patches/0001-tokenseek.patch` |
+| 设置页面、模型选择、会话用量界面 | `web/overlay/src/components/settings/SettingsPages.tsx`、`web/overlay/src/components/chatInput/ModelChoice.tsx`、`web/overlay/src/components/messages/ConversationUsage.tsx` |
 | Android 打开官方充值页、系统返回和本地加密存储 | `app/src/main/java/io/tokenseek/app/` |
 | 官方 Demo 版本与前端打包 | `tools/build-web.sh` |

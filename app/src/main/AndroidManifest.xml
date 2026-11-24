@@ -17,7 +17,8 @@
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:enableOnBackInvokedCallback="true"
         android:fullBackupContent="false"
-        android:icon="@drawable/ic_tokenseek"
+        android:icon="@mipmap/ic_tokenseek"
+        android:roundIcon="@mipmap/ic_tokenseek"
         android:label="TokenSeek"
         android:theme="@style/TokenSeekTheme"
         android:usesCleartextTraffic="false">
