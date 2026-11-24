@@ -1,0 +1,30 @@
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    namespace 'io.tokenseek.app'
+    compileSdk 35
+    buildToolsVersion '35.0.0'
+
+    defaultConfig {
+        applicationId 'io.tokenseek.app'
+        minSdk 26
+        targetSdk 35
+        versionCode 1
+        versionName '0.1.0'
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}
+
+def prepareChat = tasks.register('prepareChat', Exec) {
+    workingDir rootDir
+    commandLine 'bash', 'tools/build-web.sh'
+    inputs.file rootProject.file('tools/build-web.sh')
+    inputs.files rootProject.fileTree('web')
+    outputs.dir file('src/main/assets/site')
+}
+tasks.named('preBuild') { dependsOn prepareChat }

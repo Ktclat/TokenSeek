@@ -1,0 +1,549 @@
+diff --git a/src/app/App.tsx b/src/app/App.tsx
+index d204c0f..7d253cc 100644
+--- a/src/app/App.tsx
++++ b/src/app/App.tsx
+@@ -10,11 +10,10 @@ import {
+   useChatStore,
+ } from '../services/chat/store.js'
+ import { SearchPanel } from '../components/search/SearchPanel.js'
+-import { closeSearchPanel } from '../components/search/searchPanelState.js'
++import { closeSearchPanel, useSearchPanel } from '../components/search/searchPanelState.js'
+ import { SessionView } from '../components/session/SessionView.js'
+ import { MobileHeader } from '../components/session/MobileHeader.js'
+ import { Welcome } from '../components/session/Welcome.js'
+-import { ensureApiKey } from '../components/settings/settingsDialogState.js'
+ import { SettingsDialog } from '../components/settings/SettingsDialog.js'
+ import { Toast } from '../components/base/Toast.js'
+ import { showToast } from '../components/base/toastState.js'
+@@ -22,7 +21,7 @@ import { onUploadNotice } from '../services/attachments.js'
+ import { Button } from '../components/base/Button.js'
+ import { stopReadAloud } from '../services/speech/readAloud.js'
+ import { CollapsedSider } from '../components/sider/CollapsedSider.js'
+-import { closeMobileSider } from '../components/sider/mobileSiderState.js'
++import { closeMobileSider, useMobileSider } from '../components/sider/mobileSiderState.js'
+ import { MobileSider, Sider } from '../components/sider/Sider.js'
+ import styles from './App.module.css'
+ 
+@@ -67,10 +66,23 @@ export const App = () => {
+   // 移动端选中会话、切换布局后收起抽屉
+   useEffect(closeMobileSider, [activeId, isMobile])
+ 
++  useEffect(() => {
++    const onBack = (event: Event) => {
++      if (useMobileSider.getState().open) {
++        closeMobileSider()
++      } else if (useSearchPanel.getState().entry !== null) {
++        closeSearchPanel()
++      } else {
++        return
++      }
++      event.preventDefault()
++    }
++    window.addEventListener('tokenseek:back', onBack)
++    return () => window.removeEventListener('tokenseek:back', onBack)
++  }, [])
++
+   useEffect(() => {
+     void initChat()
+-    // 首次打开先在设置里输入 API Key
+-    ensureApiKey()
+   }, [])
+ 
+   return (
+diff --git a/src/components/messages/AssistantMessage.tsx b/src/components/messages/AssistantMessage.tsx
+index cfeb9e0..12a6d15 100644
+--- a/src/components/messages/AssistantMessage.tsx
++++ b/src/components/messages/AssistantMessage.tsx
+@@ -24,7 +24,6 @@ import {
+ } from './BranchSwitcher.js'
+ import styles from './AssistantMessage.module.css'
+ 
+-const TOP_UP_URL = 'https://platform.deepseek.com/top_up'
+ 
+ export const AssistantMessage = memo(function AssistantMessage({
+   sessionId,
+@@ -102,7 +101,7 @@ export const AssistantMessage = memo(function AssistantMessage({
+                 <button
+                   type="button"
+                   className={styles.noticeAction}
+-                  onClick={() => openSettings('data')}
++                  onClick={() => openSettings('wallet')}
+                 >
+                   {t('changeApiKey')}
+                 </button>
+@@ -111,14 +110,9 @@ export const AssistantMessage = memo(function AssistantMessage({
+             {notice.action === 'topUp' ? (
+               <>
+                 {' '}
+-                <a
+-                  className={styles.noticeAction}
+-                  href={TOP_UP_URL}
+-                  target="_blank"
+-                  rel="noreferrer"
+-                >
++                <button type="button" className={styles.noticeAction} onClick={() => openSettings('wallet')}>
+                   {t('topUp')}
+-                </a>
++                </button>
+               </>
+             ) : null}
+           </span>
+diff --git a/src/components/session/MobileHeader.module.css b/src/components/session/MobileHeader.module.css
+index e5622aa..2560635 100644
+--- a/src/components/session/MobileHeader.module.css
++++ b/src/components/session/MobileHeader.module.css
+@@ -17,3 +17,18 @@
+   font: var(--dsw-font-s-strong-14);
+   color: var(--dsw-alias-label-primary);
+ }
++
++.wallet {
++  min-height: 44px;
++  padding: 0 14px;
++  border: 0;
++  border-radius: 14px;
++  background: transparent;
++  color: var(--dsw-alias-brand-text);
++  font: inherit;
++  cursor: pointer;
++
++  &:hover {
++    background: var(--dsw-specific-sidebar-nav-item-hover);
++  }
++}
+diff --git a/src/components/session/MobileHeader.tsx b/src/components/session/MobileHeader.tsx
+index 755b908..e376757 100644
+--- a/src/components/session/MobileHeader.tsx
++++ b/src/components/session/MobileHeader.tsx
+@@ -3,6 +3,7 @@ import { useTranslate } from '../../i18n/index.js'
+ import { newChat } from '../../services/chat/store.js'
+ import { IconButton } from '../base/IconButton.js'
+ import { openMobileSider } from '../sider/mobileSiderState.js'
++import { openSettings } from '../settings/settingsDialogState.js'
+ import styles from './MobileHeader.module.css'
+ 
+ /** 移动端顶栏：左侧菜单打开侧边栏；会话页再显示标题与开启新对话 */
+@@ -17,17 +18,18 @@ export const MobileHeader = ({ title }: { title?: string }) => {
+         aria-label={t('expandSiderbarButton')}
+         onClick={openMobileSider}
+       />
++      <div className={styles.title}>{title ?? t('appName')}</div>
++      <button type="button" className={styles.wallet} onClick={() => openSettings('wallet')}>
++        {t('wallet')}
++      </button>
+       {title === undefined ? null : (
+-        <>
+-          <div className={styles.title}>{title}</div>
+-          <IconButton
+-            size="xl"
+-            tone="primary"
+-            icon={<IconNewChatOutline20 />}
+-            aria-label={t('newChat')}
+-            onClick={newChat}
+-          />
+-        </>
++        <IconButton
++          size="xl"
++          tone="primary"
++          icon={<IconNewChatOutline20 />}
++          aria-label={t('newChat')}
++          onClick={newChat}
++        />
+       )}
+     </div>
+   )
+diff --git a/src/components/settings/ApiKeyField.tsx b/src/components/settings/ApiKeyField.tsx
+index cbe6ef2..c2a9ef7 100644
+--- a/src/components/settings/ApiKeyField.tsx
++++ b/src/components/settings/ApiKeyField.tsx
+@@ -26,10 +26,10 @@ export const ApiKeyField = ({ editor }: { editor: ApiKeyEditor }) => {
+   return (
+     <div className={styles.cell}>
+       <div className={styles.apiKey}>
+-        <div className={styles.label}>{t('apiKeyStart')}</div>
++        <label className={styles.label} htmlFor="official-api-key">{t('apiKeyStart')}</label>
+         {apiKey && !editing ? (
+           <div className={styles.apiKeySaved}>
+-            <span className={styles.apiKeyMask}>{'*'.repeat(apiKey.length)}</span>
++            <span className={styles.apiKeyMask}>{'•••• ' + apiKey.slice(-4)}</span>
+             <IconButton
+               tone="primary"
+               icon={<IconEditOutline16 />}
+@@ -40,8 +40,10 @@ export const ApiKeyField = ({ editor }: { editor: ApiKeyEditor }) => {
+         ) : (
+           <div className={styles.apiKeyInput}>
+             <input
++              id="official-api-key"
+               type="password"
+               placeholder={t('apiKeyPlaceholder')}
++              disabled={form.verifying}
+               autoComplete="off"
+               spellCheck={false}
+               // 移动端打开设置时不弹键盘，点编辑后才聚焦
+diff --git a/src/components/settings/SettingsDialog.tsx b/src/components/settings/SettingsDialog.tsx
+index 8032733..803f363 100644
+--- a/src/components/settings/SettingsDialog.tsx
++++ b/src/components/settings/SettingsDialog.tsx
+@@ -34,6 +34,7 @@ import { Modal } from '../base/Modal.js'
+ import { Select } from '../base/Select.js'
+ import { showToast } from '../base/toastState.js'
+ import { ApiKeyConfirm, ApiKeyField, useApiKeyEditor } from './ApiKeyField.js'
++import { Wallet, WalletIcon } from './Wallet.js'
+ import { closeSettings, useSettingsDialog, type SettingsSection } from './settingsDialogState.js'
+ import styles from './Settings.module.css'
+ 
+@@ -48,6 +49,7 @@ export const SettingsDialog = () => {
+ }
+ 
+ const sections: { value: SettingsSection; label: TranslationKey; icon: ReactNode }[] = [
++  { value: 'wallet', label: 'wallet', icon: <WalletIcon /> },
+   {
+     value: 'general',
+     label: 'settingDialogAsideGeneralOptionLabel',
+@@ -62,18 +64,16 @@ const SettingsContent = ({
+   historyImport: ReturnType<typeof useHistoryImport>
+ }) => {
+   const t = useTranslate()
+-  const isMobile = useIsMobile()
++  const boundKey = useSettings((state) => state.apiKey)
+   // 打开时按调用方指定的分组选中，之后在弹窗内切换
+   const [section, setSection] = useState(() => useSettingsDialog.getState().section)
+-  // 切换分组不丢失正在输入的 API Key
+-  const apiKeyEditor = useApiKeyEditor()
+   const historyDelete = useHistoryDelete()
+   const replacingHistory = useChatStore((state) => state.importingHistory)
+   const historyBusy = historyImport.busy || historyDelete.busy || replacingHistory
+   return (
+     <>
+       <Modal
+-        title={t('settings')}
++        title={section === 'wallet' ? t('walletTitle') : t('settings')}
+         closable
+         className={styles.dialog}
+         mainClassName={styles.dialogMain}
+@@ -107,9 +107,10 @@ const SettingsContent = ({
+               <TtsVoiceSetting />
+               <LocationSetting />
+             </>
++          ) : section === 'wallet' ? (
++            <WalletSettings key={boundKey ?? ''} />
+           ) : (
+             <>
+-              <ApiKeyField editor={apiKeyEditor} />
+               <ImportHistory historyImport={historyImport} disabled={historyBusy} />
+               <ExportHistory disabled={historyBusy} />
+               <SettingCell
+@@ -127,7 +128,6 @@ const SettingsContent = ({
+                   </Button>
+                 }
+               />
+-              {isMobile ? <ApiKeyConfirm editor={apiKeyEditor} /> : null}
+             </>
+           )}
+         </div>
+@@ -138,6 +138,19 @@ const SettingsContent = ({
+   )
+ }
+ 
++// Remount both the wallet and its pending key verification when the binding changes.
++const WalletSettings = () => {
++  const editor = useApiKeyEditor()
++  const isMobile = useIsMobile()
++  return (
++    <>
++      <Wallet apiKey={editor.apiKey} />
++      <ApiKeyField editor={editor} />
++      {isMobile ? <ApiKeyConfirm editor={editor} /> : null}
++    </>
++  )
++}
++
+ /** 删除确认保留在设置之上；失败可重试，成功只关闭确认弹窗。 */
+ const DeleteAllConfirm = ({
+   historyDelete,
+@@ -575,6 +588,10 @@ const ExportHistory = ({ disabled }: { disabled: boolean }) => {
+     setStatus(null)
+     try {
+       const { name, blob } = await exportHistory()
++      if (window.TokenSeekFiles) {
++        await window.TokenSeekFiles.saveBlob(blob, name)
++        return
++      }
+       const url = URL.createObjectURL(blob)
+       const link = document.createElement('a')
+       link.href = url
+diff --git a/src/components/settings/settingsDialogState.ts b/src/components/settings/settingsDialogState.ts
+index 8435577..55de1a7 100644
+--- a/src/components/settings/settingsDialogState.ts
++++ b/src/components/settings/settingsDialogState.ts
+@@ -2,7 +2,7 @@ import { create } from 'zustand'
+ import { useSettings } from '../../services/settings.js'
+ 
+ /** 设置弹窗的分组：通用设置 / 数据管理 */
+-export type SettingsSection = 'general' | 'data'
++export type SettingsSection = 'wallet' | 'general' | 'data'
+ 
+ /** 设置弹窗：侧边栏底部、没有 API Key 时的操作与 401 提示都可以打开；section 为打开时选中的分组 */
+ export const useSettingsDialog = create(() => ({
+@@ -15,11 +15,11 @@ export const openSettings = (section: SettingsSection) =>
+ 
+ export const closeSettings = () => useSettingsDialog.setState({ open: false })
+ 
+-/** 没有 API Key 时打开设置并选中 API Key 所在的「数据管理」，返回是否已有 Key */
++/** 没有 API Key 时打开设置并选中 API Key 所在的「钱包」，返回是否已有 Key */
+ export const ensureApiKey = () => {
+   if (useSettings.getState().apiKey) {
+     return true
+   }
+-  openSettings('data')
++  openSettings('wallet')
+   return false
+ }
+diff --git a/src/components/settings/useApiKeyForm.ts b/src/components/settings/useApiKeyForm.ts
+index 5533f5a..5b71ff3 100644
+--- a/src/components/settings/useApiKeyForm.ts
++++ b/src/components/settings/useApiKeyForm.ts
+@@ -1,7 +1,7 @@
+-import { useState } from 'react'
++import { useLayoutEffect, useRef, useState } from 'react'
+ import { ApiError, verifyApiKey } from '../../services/api/client.js'
+ import { classifyApiError } from '../../services/api/errors.js'
+-import { setApiKey } from '../../services/settings.js'
++import { setApiKey, useSettings } from '../../services/settings.js'
+ import { useTranslate } from '../../i18n/index.js'
+ 
+ /** 输入 API Key 后先用 GET /models 校验，通过才保存 */
+@@ -10,6 +10,8 @@ export const useApiKeyForm = (onSaved?: () => void) => {
+   const [value, setValue] = useState('')
+   const [verifying, setVerifying] = useState(false)
+   const [failure, setFailure] = useState<{ cause: unknown } | null>(null)
++  const pending = useRef<AbortController | null>(null)
++  useLayoutEffect(() => () => pending.current?.abort(), [])
+   const cause = failure?.cause
+   const error =
+     failure === null
+@@ -29,20 +31,27 @@ export const useApiKeyForm = (onSaved?: () => void) => {
+ 
+   const submit = async () => {
+     const apiKey = value.trim()
+-    if (!apiKey || verifying) {
++    if (!apiKey || pending.current) {
+       return
+     }
++    const previousKey = useSettings.getState().apiKey
++    const controller = new AbortController()
++    pending.current = controller
+     setVerifying(true)
+     setFailure(null)
+     try {
+-      await verifyApiKey(apiKey)
+-      setApiKey(apiKey)
++      await verifyApiKey(apiKey, controller.signal)
++      if (controller.signal.aborted || useSettings.getState().apiKey !== previousKey) return
++      if (!setApiKey(apiKey)) {
++        throw new ApiError('protocol', { key: 'walletStorageFailed' })
++      }
+       setValue('')
+       onSaved?.()
+     } catch (e) {
+-      setFailure({ cause: e })
++      if (!controller.signal.aborted) setFailure({ cause: e })
+     } finally {
+-      setVerifying(false)
++      pending.current = null
++      if (!controller.signal.aborted) setVerifying(false)
+     }
+   }
+ 
+diff --git a/src/components/sider/Sider.tsx b/src/components/sider/Sider.tsx
+index 2f3cf56..d8fde01 100644
+--- a/src/components/sider/Sider.tsx
++++ b/src/components/sider/Sider.tsx
+@@ -10,6 +10,7 @@ import { Button } from '../base/Button.js'
+ import { IconButton } from '../base/IconButton.js'
+ import { Modal } from '../base/Modal.js'
+ import { showToast } from '../base/toastState.js'
++import { WalletIcon } from '../settings/Wallet.js'
+ import { openSettings } from '../settings/settingsDialogState.js'
+ import { closeMobileSider, useMobileSider } from './mobileSiderState.js'
+ import { SessionItem } from './SessionItem.js'
+@@ -92,6 +93,13 @@ export const Sider = ({ mobile = false }: { mobile?: boolean }) => {
+         </div>
+       </div>
+       <div className={styles.bottom}>
++        <button type="button" className={styles.settings} onClick={() => {
++          closeMobileSider()
++          openSettings('wallet')
++        }}>
++          <span className={styles.settingsIcon}><WalletIcon /></span>
++          <span className={styles.settingsLabel}>{t('wallet')}</span>
++        </button>
+         <button type="button" className={styles.settings} onClick={() => openSettings('general')}>
+           <span className={styles.settingsIcon}>
+             <IconSettingsOutline16 />
+diff --git a/src/env.d.ts b/src/env.d.ts
+index 60eba6a..5a98927 100644
+--- a/src/env.d.ts
++++ b/src/env.d.ts
+@@ -8,6 +8,11 @@ declare module '*.css' {}
+ /** 公开 API 的地址，见 rspack.config.ts 的 createConfig */
+ declare const __API_ORIGIN__: string
+ 
++interface Window {
++  TokenSeekSecrets?: { readKey(): string; writeKey(value: string): boolean }
++  TokenSeekFiles?: { saveBlob(blob: Blob, name: string): Promise<void> }
++}
++
+ /** Prism 语言包通过副作用注册到全局 Prism */
+ declare module 'prismjs/components/*' {}
+ 
+diff --git a/src/i18n/en.ts b/src/i18n/en.ts
+index 2d49027..2cb8b66 100644
+--- a/src/i18n/en.ts
++++ b/src/i18n/en.ts
+@@ -14,7 +14,27 @@ export const en = {
+     'Chats or attachments have not been saved locally. Retry before closing this page.',
+   sessionDeleteFailed: 'Unable to delete this chat. Please try again.',
+   settings: 'Settings',
+-  appName: 'API usage demo',
++  appName: 'TokenSeek',
++  wallet: 'Wallet',
++  walletTitle: 'DeepSeek platform wallet',
++  walletTotal: 'Total balance',
++  walletCredit: 'Topped-up balance',
++  walletGrant: 'Granted balance',
++  walletRefresh: 'Refresh balance',
++  walletLoading: 'Checking your platform balance…',
++  walletUnbound: 'Connect your official API key to view your balance.',
++  walletInvalid: 'This key is invalid. Connect a valid API key.',
++  walletLoadFailed: 'Could not retrieve your balance. Please try again.',
++  walletZero: 'Your balance is zero. Top up on the platform to get started.',
++  walletUnavailable: 'Your platform account is currently unavailable for API calls.',
++  walletEmpty: 'The platform returned no balance details.',
++  walletRecharge: 'Top up on DeepSeek',
++  walletAccountHint: 'On the payment page, sign in to the DeepSeek account that created this key. Your balance refreshes when you return.',
++  walletKeys: 'Create or manage official API keys',
++  walletChat: 'Return to chat',
++  walletStorageFailed: 'Could not save the key on this device. Please try again.',
++  walletRemove: 'Remove key from this device',
++  walletConfirmRemove: 'Confirm removal',
+   deleteSessionModalContentTitle: 'Delete chat?',
+   deleteSessionWithFilesDescription:
+     'This chat and its uploaded files will be permanently deleted and cannot be recovered. Delete this chat?',
+@@ -103,7 +123,7 @@ export const en = {
+   avatarMenuSettingsDialogThemeSelectLightOption: 'Light',
+   avatarMenuSettingsDialogThemeSelectDarkOption: 'Dark',
+   avatarMenuSettingsDialogThemeSelectSystemOption: 'System',
+-  apiKeyStart: 'Enter an API Key to get started',
++  apiKeyStart: 'Official API key on this device',
+   apiKeyEdit: 'Edit API Key',
+   apiKeyPlaceholder: 'Enter API Key',
+   apiKeyVerifying: 'Verifying...',
+diff --git a/src/i18n/zh.ts b/src/i18n/zh.ts
+index d99f058..1918f9a 100644
+--- a/src/i18n/zh.ts
++++ b/src/i18n/zh.ts
+@@ -11,7 +11,27 @@ export const zh = {
+   sessionSaveFailed: '对话或附件尚未保存到本机，关闭页面可能丢失，请重试',
+   sessionDeleteFailed: '删除对话失败，请重试',
+   settings: '设置',
+-  appName: 'API 使用 demo',
++  appName: 'TokenSeek',
++  wallet: '钱包',
++  walletTitle: 'DeepSeek 官方钱包',
++  walletTotal: '账户总余额',
++  walletCredit: '充值余额',
++  walletGrant: '赠送余额',
++  walletRefresh: '刷新余额',
++  walletLoading: '正在查询官方余额…',
++  walletUnbound: '绑定官方 API Key 后即可查看余额。',
++  walletInvalid: '密钥已失效，请重新绑定。',
++  walletLoadFailed: '暂时无法查询余额，请重试。',
++  walletZero: '余额为零，可以前往官方充值。',
++  walletUnavailable: '官方账户当前不可用于 API 调用。',
++  walletEmpty: '官方暂未返回余额明细。',
++  walletRecharge: '前往官方充值',
++  walletAccountHint: '请在充值页登录创建此 API Key 的 DeepSeek 账户。返回后会自动刷新余额。',
++  walletKeys: '创建或管理官方 API Key',
++  walletChat: '返回对话',
++  walletStorageFailed: '无法在设备上保存密钥，请重试。',
++  walletRemove: '移除本机密钥',
++  walletConfirmRemove: '确认移除',
+   deleteSessionModalContentTitle: '永久删除对话',
+   deleteSessionWithFilesDescription: '删除后，该对话及其中上传的文件将不可恢复。确认删除吗？',
+   cancel: '取消',
+@@ -98,7 +118,7 @@ export const zh = {
+   avatarMenuSettingsDialogThemeSelectLightOption: '浅色',
+   avatarMenuSettingsDialogThemeSelectDarkOption: '深色',
+   avatarMenuSettingsDialogThemeSelectSystemOption: '跟随系统',
+-  apiKeyStart: '输入 API Key 开始使用',
++  apiKeyStart: '本机使用的官方 API Key',
+   apiKeyEdit: '修改 API Key',
+   apiKeyPlaceholder: '请输入 API Key',
+   apiKeyVerifying: '正在验证...',
+diff --git a/src/index.html b/src/index.html
+index 91df5f9..5b5be78 100644
+--- a/src/index.html
++++ b/src/index.html
+@@ -4,7 +4,7 @@
+     <meta charset="utf-8" />
+     <meta name="viewport" content="width=device-width,initial-scale=1" />
+     <meta name="theme-color" content="#ffffff" />
+-    <title>API 使用 demo</title>
++    <title>TokenSeek</title>
+   </head>
+   <body>
+     <div id="root"></div>
+diff --git a/src/services/settings.ts b/src/services/settings.ts
+index 078543b..5adf27f 100644
+--- a/src/services/settings.ts
++++ b/src/services/settings.ts
+@@ -7,7 +7,7 @@ export type Locale = 'zh-CN' | 'en-US'
+ /** 主题偏好；默认跟随系统 */
+ export type ThemePreference = 'light' | 'dark' | 'system'
+ 
+-/** 本机设置，存 localStorage：API Key、语言、主题、位置、朗读音色、深度思考与智能搜索开关、侧边栏收起状态 */
++/** Android 密钥由宿主保存，其他偏好保存在当前设备。 */
+ type Settings = {
+   apiKey: string | null
+   locale: Locale
+@@ -59,7 +59,7 @@ const initialLocale = (): Locale => {
+   if (saved === 'zh-CN' || saved === 'en-US') {
+     return saved
+   }
+-  return isChineseBrowser() ? 'zh-CN' : 'en-US'
++  return 'zh-CN'
+ }
+ 
+ const initialLocation = (): UserLocation | null => {
+@@ -87,8 +87,12 @@ const initialThemePreference = (): ThemePreference => {
+ /** 未保存过时使用服务端默认音色 stella（海星） */
+ const initialTtsVoice = (): TtsVoice => (read(KEYS.ttsVoice) === 'tide' ? 'tide' : 'stella')
+ 
++// The Android app must never fall back to plaintext storage if its bridge is unavailable.
++const isAndroidApp = () =>
++  Boolean(window.TokenSeekSecrets) || window.location.origin === 'https://appassets.androidplatform.net'
++
+ export const useSettings = create<Settings>(() => ({
+-  apiKey: read(KEYS.apiKey),
++  apiKey: isAndroidApp() ? window.TokenSeekSecrets?.readKey() || null : read(KEYS.apiKey),
+   locale: initialLocale(),
+   location: initialLocation(),
+   themePreference: initialThemePreference(),
+@@ -120,8 +124,15 @@ export const setTtsVoice = (ttsVoice: TtsVoice) => {
+ }
+ 
+ export const setApiKey = (apiKey: string | null) => {
+-  write(KEYS.apiKey, apiKey)
++  if (isAndroidApp()) {
++    if (!window.TokenSeekSecrets?.writeKey(apiKey ?? '')) {
++      return false
++    }
++  } else {
++    write(KEYS.apiKey, apiKey)
++  }
+   useSettings.setState({ apiKey })
++  return true
+ }
+ 
+ export const setThinking = (thinking: boolean) => {
