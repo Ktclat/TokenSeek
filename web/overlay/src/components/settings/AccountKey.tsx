@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { isKeyPreview, type SavedKey } from '../../services/keyRing.js'
 import { changeKey, useSettings } from '../../services/settings.js'
 import { Button } from '../base/Button.js'
-import { IconRightUpOutline14 } from '../base/icons.js'
+import { OfficialKeysLink } from './OfficialPlatform.js'
 import { showToast } from '../base/toastState.js'
 import { useApiKeyForm } from './useApiKeyForm.js'
 import styles from './KeyList.module.css'
@@ -10,20 +10,20 @@ import pages from './SettingsPages.module.css'
 
 const text = {
   'zh-CN': {
-    keys: '本机密钥', official: '前往 DeepSeek 官方创建或管理 Key', add: '添加 API Key',
-    help: '在官方平台创建后，将完整 API Key 粘贴到这里。验证成功后即可选用它聊天和查看余额。',
-    name: '密钥名称（可选）', example: '例如：个人账户', key: '官方 API Key', paste: '粘贴 API Key',
+    keys: '保存在本机的 Key', add: '添加已有 API Key',
+    help: '粘贴在 DeepSeek 开放平台创建的完整 Key。选用后，聊天和余额查询将使用它所属的账户。',
+    name: '本机备注（可选）', example: '个人账户', key: '官方 API Key', paste: '粘贴 API Key',
     save: '验证并选用', pending: '正在验证…', cancel: '取消', active: '使用中', select: '选用',
-    edit: '管理', rename: '保存名称', remove: '从本机移除', confirm: '确认移除',
+    edit: '本机设置', rename: '保存备注', remove: '从本机移除', confirm: '确认移除',
     removeHint: '仅移除这台设备上的密钥。官方密钥仍可在 DeepSeek 开放平台管理。',
     clear: '取消选用', preview: '浏览器预览中新添加的密钥仅在本页打开期间保留。',
   },
   'en-US': {
-    keys: 'Keys on this device', official: 'Create or manage keys on DeepSeek', add: 'Add an API key',
+    keys: 'Keys on this device', add: 'Add an existing API key',
     help: 'Create a key on the official platform, then paste it here. A verified key can be used for chat and balance queries.',
-    name: 'Key name (optional)', example: 'e.g. Personal account', key: 'Official API key', paste: 'Paste API key',
+    name: 'Device label (optional)', example: 'e.g. Personal account', key: 'Official API key', paste: 'Paste API key',
     save: 'Verify and use', pending: 'Verifying…', cancel: 'Cancel', active: 'In use', select: 'Use',
-    edit: 'Manage', rename: 'Save name', remove: 'Remove from device', confirm: 'Confirm removal',
+    edit: 'Device settings', rename: 'Save label', remove: 'Remove from device', confirm: 'Confirm removal',
     removeHint: 'This removes the key from this device. You can manage the official key on DeepSeek.',
     clear: 'Deselect', preview: 'New keys in browser preview are kept only while this page is open.',
   },
@@ -101,11 +101,6 @@ export function AccountKey() {
   const [editing, setEditing] = useState<string | null>(null)
   return (
     <>
-      <div className={pages.group}>
-        <a className={pages.external} href="https://platform.deepseek.com/api_keys" target="_blank" rel="noopener noreferrer">
-          {copy.official} <IconRightUpOutline14 />
-        </a>
-      </div>
       {ring.entries.length > 0 && <>
         <h2 className={pages.sectionLabel}>{copy.keys}</h2>
         <ul className={styles.list}>{ring.entries.map(entry => (
@@ -120,6 +115,7 @@ export function AccountKey() {
           </>
         : <Button variant="outlined" onClick={() => { setEditing(null); setAdding(true) }}>{copy.add}</Button>}
       {isKeyPreview() && <p className={pages.hint}>{copy.preview}</p>}
+      <div className={styles.platform}><OfficialKeysLink /></div>
     </>
   )
 }

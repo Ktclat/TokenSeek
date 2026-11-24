@@ -1,0 +1,55 @@
+diff --git a/src/components/settings/settingsDialogState.ts b/src/components/settings/settingsDialogState.ts
+index 5680fab..c2391b4 100644
+--- a/src/components/settings/settingsDialogState.ts
++++ b/src/components/settings/settingsDialogState.ts
+@@ -21,7 +21,8 @@ export const backSettings = (steps = 1) =>
+ export const closeSettings = () => useSettingsDialog.setState({ stack: [] })
+ 
+ export const ensureApiKey = () => {
+-  if (useSettings.getState().apiKey) return true
+-  openSettings('account')
++  const { apiKey, keyRing } = useSettings.getState()
++  if (apiKey) return true
++  openSettings(keyRing.entries.length ? 'keys' : 'account')
+   return false
+ }
+diff --git a/src/components/sider/Sider.tsx b/src/components/sider/Sider.tsx
+index 7a565dd..3613a39 100644
+--- a/src/components/sider/Sider.tsx
++++ b/src/components/sider/Sider.tsx
+@@ -10,6 +10,7 @@ import { Button } from '../base/Button.js'
+ import { IconButton } from '../base/IconButton.js'
+ import { Modal } from '../base/Modal.js'
+ import { showToast } from '../base/toastState.js'
++import { OfficialKeysLink } from '../settings/OfficialPlatform.js'
+ import { AccountIcon, useAccountText } from '../settings/AccountFlow.js'
+ import { openSettings } from '../settings/settingsDialogState.js'
+ import { closeMobileSider, useMobileSider } from './mobileSiderState.js'
+@@ -76,6 +77,7 @@ export const Sider = ({ mobile = false }: { mobile?: boolean }) => {
+         </span>
+         {t('newChat')}
+       </button>
++      <OfficialKeysLink shortcut />
+       <div className={styles.listWrap}>
+         <div className={styles.list}>
+           {groups.map((group) => (
+diff --git a/src/main.tsx b/src/main.tsx
+index 26f020f..86b6ead 100644
+--- a/src/main.tsx
++++ b/src/main.tsx
+@@ -6,11 +6,12 @@ import { ensureKatex } from './services/markdown/katex.js'
+ import './app/theme.css'
+ import './app/global.css'
+ 
+-// A Custom Tab can return to an already running or freshly restored Android app.
++// Restore the requested destination when the Android official platform screen returns.
+ const handlePortalReturn = () => {
+-  if (window.location.hash !== '#bind-official-key') return
++  const hash = window.location.hash
++  if (hash !== '#bind-official-key' && hash !== '#return-official-account') return
+   window.history.replaceState(window.history.state, '', window.location.pathname + window.location.search)
+-  openSettings('keys')
++  openSettings(hash === '#bind-official-key' ? 'keys' : 'account')
+ }
+ window.addEventListener('hashchange', handlePortalReturn)
+ handlePortalReturn()

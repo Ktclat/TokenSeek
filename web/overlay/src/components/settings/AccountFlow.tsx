@@ -1,27 +1,28 @@
 import { useTranslate } from '../../i18n/index.js'
 import { useSettings } from '../../services/settings.js'
 import { Button } from '../base/Button.js'
-import { IconRightUpOutline14 } from '../base/icons.js'
+import { IconChevronRightOutline14 } from '../base/icons.js'
 import { closeSettings, pushSettings } from './settingsDialogState.js'
 import { SettingsRow } from './SettingsRows.js'
 import { BalanceSummary, WalletIcon } from './Wallet.js'
+import { OfficialKeysLink, platformUrls, usePlatformLabels } from './OfficialPlatform.js'
 import styles from './SettingsPages.module.css'
 import accountStyles from './AccountFlow.module.css'
 
 const accountText = {
   'zh-CN': {
-    title: 'DeepSeek 账户', platform: '官方开放平台', device: '本机 API 授权',
-    login: '登录 DeepSeek 开放平台', bind: '绑定 API Key', manage: '管理本机 API Key',
-    signInHint: '请在官方页面查看登录账号，并使用同一账号充值和创建密钥。',
-    bindHint: '在官方页面复制新建的 API Key，返回这里绑定，即可用该账户聊天。',
+    title: 'DeepSeek 账户', platform: '官方开放平台', device: 'TokenSeek 聊天',
+    login: '登录 DeepSeek 开放平台',
+    signInHint: '登录、充值和密钥管理由 DeepSeek 官方页面办理。请使用同一账户充值和创建密钥。',
+    bindHint: '已经有 Key？在本机选用后，就可以聊天和查看对应账户的余额。',
     deviceHint: '聊天和余额查询使用本机选中的 API Key。',
     wallet: '查看钱包',
   },
   'en-US': {
-    title: 'DeepSeek account', platform: 'Official platform', device: 'API access on this device',
-    login: 'Sign in to the DeepSeek platform', bind: 'Connect an API key', manage: 'Manage keys on this device',
-    signInHint: 'Check the signed-in account on the official platform. Use the same account to top up and create your key.',
-    bindHint: 'Copy your new key from the platform, then connect it here to chat with your account.',
+    title: 'DeepSeek account', platform: 'Official platform', device: 'TokenSeek chat',
+    login: 'Sign in to the DeepSeek platform',
+    signInHint: 'Sign in, top up and manage keys on DeepSeek. Use the same account for payment and key creation.',
+    bindHint: 'Already have a key? Select it here to chat and view that account’s balance.',
     deviceHint: 'Chats and balance checks use the key selected on this device.',
     wallet: 'View wallet',
   },
@@ -36,40 +37,31 @@ export const AccountIcon = () => (
   </svg>
 )
 
-const official = {
-  platform: 'https://platform.deepseek.com/',
-  topUp: 'https://platform.deepseek.com/top_up',
-  keys: 'https://platform.deepseek.com/api_keys',
-}
-
-const PlatformLink = ({ href, children, onClick }: { href: string; children: string; onClick?(): void }) => (
-  <a className={accountStyles.link} href={href} target="_blank" rel="noopener noreferrer" onClick={onClick}>
-    {children}<IconRightUpOutline14 />
+const PlatformLink = ({ href, children }: { href: string; children: string }) => (
+  <a className={accountStyles.link} href={href} target="_blank" rel="noopener noreferrer">
+    {children}<span className={accountStyles.disclosure} aria-hidden="true"><IconChevronRightOutline14 /></span>
   </a>
 )
 
 export const AccountFlow = ({ apiKey }: { apiKey: string | null }) => {
   const t = useTranslate()
   const text = useAccountText()
-  // The browser owns the platform session. Only an official API key authorizes device requests.
-  const platform = (
-    <section aria-label={text.platform}>
-      <h2 className={styles.sectionLabel}>{text.platform}</h2>
-      <div className={styles.group}>
-        <PlatformLink href={official.platform}>{text.login}</PlatformLink>
-        <PlatformLink href={official.topUp}>{t('walletRecharge')}</PlatformLink>
-        <PlatformLink href={official.keys} onClick={() => pushSettings('keys')}>{t('walletKeys')}</PlatformLink>
-      </div>
-      <p className={accountStyles.hint}>{text.signInHint}</p>
-    </section>
-  )
+  const labels = usePlatformLabels()
   return (
     <>
-      {!apiKey && platform}
+      <section aria-label={text.platform}>
+        <h2 className={styles.sectionLabel}>{text.platform}</h2>
+        <div className={styles.group}>
+          <PlatformLink href={platformUrls.account}>{text.login}</PlatformLink>
+          <PlatformLink href={platformUrls.topUp}>{t('walletRecharge')}</PlatformLink>
+          <OfficialKeysLink detail />
+        </div>
+        <p className={accountStyles.hint}>{text.signInHint}</p>
+      </section>
       <section aria-label={text.device}>
         <h2 className={styles.sectionLabel}>{text.device}</h2>
         <div className={styles.group}>
-          <SettingsRow label={apiKey ? text.manage : text.bind} value={apiKey ? '•••• ' + apiKey.slice(-4) : undefined}
+          <SettingsRow label={apiKey ? labels.chatKeys : labels.selectKey} value={apiKey ? '•••• ' + apiKey.slice(-4) : undefined}
             onClick={() => pushSettings('keys')} />
           {apiKey && <SettingsRow label={text.wallet} icon={<WalletIcon />} onClick={() => pushSettings('wallet')} />}
         </div>
@@ -81,7 +73,6 @@ export const AccountFlow = ({ apiKey }: { apiKey: string | null }) => {
           </div>
         </>}
       </section>
-      {apiKey && platform}
     </>
   )
 }

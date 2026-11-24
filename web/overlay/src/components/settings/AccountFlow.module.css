@@ -23,3 +23,35 @@
   color: var(--dsw-alias-label-secondary);
 }
 .chat { margin: 12px 0 24px; }
+.shortcut {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  flex-shrink: 0;
+  box-sizing: border-box;
+  min-height: 44px;
+  margin: 8px 0 0;
+  padding: 8px 10px;
+  border-radius: 12px;
+  color: var(--dsw-alias-label-primary);
+  font-size: 14px;
+  text-decoration: none;
+  &:hover, &:active { background: var(--dsw-specific-sidebar-nav-item-hover); }
+  &:focus-visible { outline: 2px solid var(--dsw-alias-brand-text); outline-offset: -2px; }
+}
+.destination {
+  flex: 1;
+  min-width: 0;
+  small {
+    display: block;
+    margin-top: 3px;
+    color: var(--dsw-alias-label-secondary);
+    font-size: 12px;
+    line-height: 1.5;
+  }
+}
+.disclosure {
+  display: inline-flex;
+  align-items: center;
+  svg { color: var(--dsw-alias-label-tertiary); }
+}

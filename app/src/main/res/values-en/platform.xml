@@ -1,0 +1,20 @@
+<resources>
+    <string name="platform_close">Close platform</string>
+    <string name="platform_bind">Bind key</string>
+    <string name="platform_home">Platform</string>
+    <string name="platform_topup">Top up</string>
+    <string name="platform_keys">API keys</string>
+    <string name="platform_loading">Opening page…</string>
+    <string name="platform_retry">Retry</string>
+    <string name="platform_dismiss">Dismiss</string>
+    <string name="platform_load_failed">This page could not load. You can reopen the current platform section.</string>
+    <string name="platform_ssl_failed">The secure connection could not be verified. Check your network and try again.</string>
+    <string name="platform_google">Use your browser for Google sign-in, or go back to choose another sign-in method.</string>
+    <string name="platform_browser">Continue in browser</string>
+    <string name="platform_payment_app">This payment page wants to open %1$s.</string>
+    <string name="platform_open_payment">Open %1$s</string>
+    <string name="platform_alipay">Alipay</string>
+    <string name="platform_wechat">WeChat</string>
+    <string name="platform_no_handler">No app is available to open this link. Go back to choose another option.</string>
+    <string name="platform_unsupported">This link cannot open in this window. Go back to choose another option.</string>
+</resources>

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useTranslate, type TranslationKey } from '../../i18n/index.js'
 import { getBalance } from '../../services/api/balance.js'
 import { classifyApiError } from '../../services/api/errors.js'
+import { platformUrls } from './OfficialPlatform.js'
 import { Button } from '../base/Button.js'
 import { closeSettings } from './settingsDialogState.js'
 import styles from './Wallet.module.css'
@@ -118,7 +119,7 @@ export const Wallet = ({ apiKey }: { apiKey: string | null }) => {
     <section className={styles.wallet} aria-label={t('walletTitle')}>
       <BalanceCard bound={Boolean(apiKey)} {...balance} />
       <div className={styles.actions}>
-        <a className={styles.topUp} href="https://platform.deepseek.com/top_up" target="_blank" rel="noopener noreferrer">{t('walletRecharge')} <span aria-hidden="true">↗</span></a>
+        <a className={styles.topUp} href={platformUrls.topUp} target="_blank" rel="noopener noreferrer">{t('walletRecharge')} <span aria-hidden="true">↗</span></a>
         {balance.state.status === 'ready' && balance.state.balance.is_available &&
           <Button variant="outlined" onClick={closeSettings}>{t('walletChat')}</Button>}
       </div>

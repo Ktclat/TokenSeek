@@ -7,7 +7,6 @@ import android.content.ActivityNotFoundException;
 import android.content.ClipData;
 import android.content.Intent;
 import android.content.pm.PackageManager;
-import android.content.pm.ResolveInfo;
 import android.content.res.Configuration;
 import android.graphics.Color;
 import android.graphics.Insets;
@@ -36,7 +35,11 @@ import java.util.UUID;
 public final class MainActivity extends Activity {
     private static final int PICK_FILES = 40;
     private static final int REQUEST_MICROPHONE = 42;
-    private static final String BIND_URL = LocalSite.INDEX + "#bind-official-key";
+    private static final int OPEN_PLATFORM = 43;
+    private boolean platformOpen;
+    private boolean restoreAccountOnReturn;
+    private boolean localPageReady;
+    private String pendingPlatformPage;
     // The capability is inserted into a same-origin script only for the lifetime of this WebView.
     private final String capability = UUID.randomUUID().toString();
     private WebView web;
@@ -44,7 +47,6 @@ public final class MainActivity extends Activity {
     private Boolean pageDark;
     private KeyVault vault;
     private DocumentExport export;
-    private String portalBrowser;
     private PermissionRequest audioRequest;
     private ValueCallback<Uri[]> filesCallback;
 
@@ -75,7 +77,7 @@ public final class MainActivity extends Activity {
         settings.setAllowContentAccess(false);
         settings.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
         settings.setGeolocationEnabled(false);
-        // Browsing and official payment sessions run in the user's browser.
+        // This WebView only hosts the bundled chat. Official pages use their own activity.
         settings.setSupportMultipleWindows(false);
         settings.setJavaScriptCanOpenWindowsAutomatically(false);
         web.setWebViewClient(new LocalSite(this, capability));
@@ -85,29 +87,30 @@ public final class MainActivity extends Activity {
             getOnBackInvokedDispatcher().registerOnBackInvokedCallback(
                     OnBackInvokedDispatcher.PRIORITY_DEFAULT, this::handleBack);
         }
-        if (state != null) portalBrowser = state.getString("officialBrowser");
-        String action = getIntent().getAction();
-        web.loadUrl(OfficialPortal.BIND.equals(action) ? BIND_URL : LocalSite.INDEX);
-        if (state == null) openNextOfficialPage(action);
+        if (state != null) {
+            platformOpen = state.getBoolean("platformOpen");
+            restoreAccountOnReturn = platformOpen;
+            pendingPlatformPage = state.getString("pendingPlatformPage");
+        }
+        web.loadUrl(LocalSite.INDEX);
     }
 
     @Override protected void onSaveInstanceState(Bundle state) {
         super.onSaveInstanceState(state);
-        state.putString("officialBrowser", portalBrowser);
+        state.putBoolean("platformOpen", platformOpen);
+        state.putString("pendingPlatformPage", pendingPlatformPage);
     }
 
-    @Override protected void onNewIntent(Intent intent) {
-        super.onNewIntent(intent);
-        if (OfficialPortal.BIND.equals(intent.getAction())) {
-            web.evaluateJavascript("location.replace(" + JSONObject.quote(BIND_URL) + ")", null);
-        } else {
-            openNextOfficialPage(intent.getAction());
-        }
+    void onLocalPageReady() {
+        localPageReady = true;
+        deliverPlatformReturn();
     }
 
-    private void openNextOfficialPage(String action) {
-        if (OfficialPortal.TOP_UP.equals(action)) openExternal(OfficialPortal.TOP_UP_URL);
-        else if (OfficialPortal.KEYS.equals(action)) openExternal(OfficialPortal.KEYS_URL);
+    private void deliverPlatformReturn() {
+        if (!localPageReady || pendingPlatformPage == null) return;
+        String destination = JSONObject.quote(LocalSite.INDEX + pendingPlatformPage);
+        pendingPlatformPage = null;
+        web.evaluateJavascript("location.replace(" + destination + ")", null);
     }
 
     private void applySystemBars() {
@@ -145,47 +148,18 @@ public final class MainActivity extends Activity {
     void openExternal(Uri uri) {
         if (!("https".equals(uri.getScheme()) || "http".equals(uri.getScheme()))
                 || uri.getHost() == null || uri.getUserInfo() != null || LocalSite.ownedOrigin(uri)) return;
-        if ("https".equals(uri.getScheme()) && "platform.deepseek.com".equals(uri.getEncodedAuthority())
-                && openOfficialTab(uri)) return;
+        if (OfficialPlatformActivity.isPlatformUrl(uri)) {
+            if (!platformOpen) {
+                platformOpen = true;
+                startActivityForResult(OfficialPlatformActivity.createIntent(this, uri.toString()), OPEN_PLATFORM);
+            }
+            return;
+        }
         try {
             startActivity(new Intent(Intent.ACTION_VIEW, uri).addCategory(Intent.CATEGORY_BROWSABLE));
         } catch (ActivityNotFoundException unavailable) {
             Toast.makeText(this, "没有可打开此链接的浏览器", Toast.LENGTH_SHORT).show();
         }
-    }
-
-    /** Custom Tabs' public Intent protocol keeps the official domain and browser session visible. */
-    private boolean openOfficialTab(Uri uri) {
-        PackageManager pm = getPackageManager();
-        Intent generic = new Intent(Intent.ACTION_VIEW, Uri.parse("https://example.invalid"))
-                .addCategory(Intent.CATEGORY_BROWSABLE);
-        ResolveInfo preferred = pm.resolveActivity(generic, PackageManager.MATCH_DEFAULT_ONLY);
-        Intent service = new Intent("android.support.customtabs.action.CustomTabsService");
-        List<String> browsers = new ArrayList<>();
-        for (ResolveInfo browser : pm.queryIntentActivities(generic, PackageManager.MATCH_DEFAULT_ONLY)) {
-            String name = browser.activityInfo.packageName;
-            if (pm.resolveService(service.setPackage(name), 0) == null) continue;
-            if (preferred != null && name.equals(preferred.activityInfo.packageName)) browsers.add(0, name);
-            else browsers.add(name);
-        }
-        // Keep the same browser profile throughout sign-in, payment and key creation.
-        if (portalBrowser != null && browsers.remove(portalBrowser)) browsers.add(0, portalBrowser);
-        for (String browser : browsers) {
-            Bundle session = new Bundle();
-            session.putBinder("android.support.customtabs.extra.SESSION", null);
-            Intent tab = new Intent(Intent.ACTION_VIEW, uri).setPackage(browser).putExtras(session)
-                    .putExtra("android.support.customtabs.extra.ENABLE_URLBAR_HIDING", false)
-                    .putExtra("android.support.customtabs.extra.TITLE_VISIBILITY", 1);
-            OfficialPortal.addNextStep(this, tab, uri);
-            try {
-                startActivity(tab);
-                portalBrowser = browser;
-                return true;
-            } catch (ActivityNotFoundException unavailable) {
-                // The browser can be removed between discovery and launch.
-            }
-        }
-        return false;
     }
 
     void pickerResult(String result) {
@@ -257,7 +231,17 @@ public final class MainActivity extends Activity {
 
     @Override protected void onActivityResult(int request, int status, Intent data) {
         super.onActivityResult(request, status, data);
-        if (request == DocumentExport.PICK_DESTINATION) {
+        if (request == OPEN_PLATFORM) {
+            platformOpen = false;
+            if (status == RESULT_OK && data != null
+                    && data.getBooleanExtra(OfficialPlatformActivity.EXTRA_BIND, false)) {
+                pendingPlatformPage = "#bind-official-key";
+            } else if (restoreAccountOnReturn) {
+                pendingPlatformPage = "#return-official-account";
+            }
+            restoreAccountOnReturn = false;
+            deliverPlatformReturn();
+        } else if (request == DocumentExport.PICK_DESTINATION) {
             export.result(status, data);
         } else if (request == PICK_FILES && filesCallback != null) {
             List<Uri> files = new ArrayList<>();

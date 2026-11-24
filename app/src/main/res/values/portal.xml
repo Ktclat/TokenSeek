@@ -1,7 +1,0 @@
-<resources>
-    <color name="portal_background">#F4F6FB</color>
-    <color name="portal_action">#314DC9</color>
-    <string name="portal_top_up">前往 DeepSeek 官方充值</string>
-    <string name="portal_keys">前往 DeepSeek 官方密钥管理</string>
-    <string name="portal_bind">返回 TokenSeek 填入 API Key</string>
-</resources>

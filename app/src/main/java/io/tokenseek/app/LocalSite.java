@@ -40,6 +40,10 @@ final class LocalSite extends WebViewClient {
         return ownedOrigin(uri) && "/site/index.html".equals(uri.getEncodedPath()) && uri.getQuery() == null;
     }
 
+    @Override public void onPageFinished(WebView view, String url) {
+        if (isIndex(Uri.parse(url))) activity.onLocalPageReady();
+    }
+
     @Override public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
         if (!request.isForMainFrame()) return true;
         if (isIndex(request.getUrl())) return false;

@@ -1,0 +1,38 @@
+<resources>
+    <color name="platform_ink">#20252C</color>
+    <color name="platform_muted">#59636F</color>
+    <color name="platform_accent">#354FC2</color>
+    <color name="platform_hint_background">#F0F3FC</color>
+    <style name="PlatformAction" parent="@android:style/Widget.Material.Button.Borderless">
+        <item name="android:minWidth">48dp</item>
+        <item name="android:minHeight">48dp</item>
+        <item name="android:paddingHorizontal">8dp</item>
+        <item name="android:textSize">14sp</item>
+        <item name="android:textColor">@color/platform_accent</item>
+        <item name="android:textAllCaps">false</item>
+    </style>
+    <style name="PlatformTab" parent="@style/PlatformAction">
+        <item name="android:layout_width">0dp</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:layout_weight">1</item>
+    </style>
+    <string name="platform_close">关闭官方平台</string>
+    <string name="platform_bind">返回绑定</string>
+    <string name="platform_home">平台</string>
+    <string name="platform_topup">充值</string>
+    <string name="platform_keys">API Key</string>
+    <string name="platform_https_origin" translatable="false">https://%1$s</string>
+    <string name="platform_loading">正在打开页面…</string>
+    <string name="platform_retry">重试</string>
+    <string name="platform_dismiss">收起</string>
+    <string name="platform_load_failed">页面未能加载。可以重新打开当前平台入口。</string>
+    <string name="platform_ssl_failed">无法验证此网站的安全连接。请检查网络后再试。</string>
+    <string name="platform_google">Google 登录可在浏览器继续。也可以返回官方登录页，选择其他登录方式。</string>
+    <string name="platform_browser">在浏览器继续</string>
+    <string name="platform_payment_app">此支付页面请求打开%1$s。</string>
+    <string name="platform_open_payment">打开%1$s</string>
+    <string name="platform_alipay">支付宝</string>
+    <string name="platform_wechat">微信</string>
+    <string name="platform_no_handler">未找到可打开此链接的应用。请返回官方页面选择其他方式。</string>
+    <string name="platform_unsupported">此链接无法在此窗口打开。可以返回官方页面选择其他方式。</string>
+</resources>
