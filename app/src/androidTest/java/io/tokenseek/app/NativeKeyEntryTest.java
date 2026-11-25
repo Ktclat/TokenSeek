@@ -12,6 +12,9 @@ import android.widget.FrameLayout;
 import androidx.test.ext.junit.runners.AndroidJUnit4;
 import androidx.test.platform.app.InstrumentationRegistry;
 
+import org.json.JSONArray;
+import org.json.JSONException;
+import org.json.JSONObject;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 
@@ -19,6 +22,40 @@ import java.util.ArrayList;
 
 @RunWith(AndroidJUnit4.class)
 public class NativeKeyEntryTest {
+    @Test public void expandedActionsFollowTheSameKeyWhenTheDirectoryReorders() throws JSONException {
+        JSONObject first = new JSONObject().put("id", "row-a").put("name", "Chat")
+                .put("masked", "sk-****1234").put("rename", true).put("revoke", true);
+        JSONObject second = new JSONObject().put("id", "row-b").put("name", "Chat")
+                .put("masked", "sk-****5678").put("rename", true).put("revoke", true);
+        JSONObject before = new JSONObject().put("create", true).put("rows", new JSONArray().put(first).put(second));
+        JSONObject reordered = new JSONObject().put("create", true).put("rows", new JSONArray().put(second).put(first));
+        InstrumentationRegistry.getInstrumentation().runOnMainSync(() -> {
+            Context context = InstrumentationRegistry.getInstrumentation().getTargetContext();
+            FrameLayout layer = new FrameLayout(context);
+            ArrayList<String> commands = new ArrayList<>();
+            OfficialKeyPanel panel = new OfficialKeyPanel(context, commands::add);
+            layer.addView(panel);
+            try {
+                panel.render(before);
+                ArrayList<View> secondRow = new ArrayList<>();
+                panel.findViewsWithText(secondRow, "5678", View.FIND_VIEWS_WITH_CONTENT_DESCRIPTION);
+                assertEquals(1, secondRow.size());
+                assertTrue(secondRow.get(0).performClick());
+                panel.render(reordered);
+            } catch (JSONException ex) {
+                throw new AssertionError(ex);
+            }
+            assertTrue(withText(layer, R.string.key_panel_rename).performClick());
+            assertEquals(1, commands.size());
+            assertEquals("rename:row-b", commands.get(0));
+            assertTrue(panel.handleBack());
+            ArrayList<View> actions = new ArrayList<>();
+            layer.findViewsWithText(actions, context.getString(R.string.key_panel_rename), View.FIND_VIEWS_WITH_TEXT);
+            assertTrue(actions.isEmpty());
+            assertFalse(panel.handleBack());
+        });
+    }
+
     private static View withText(FrameLayout layer, int stringId) {
         ArrayList<View> matches = new ArrayList<>();
         layer.findViewsWithText(matches, layer.getResources().getText(stringId), View.FIND_VIEWS_WITH_TEXT);
