@@ -12,6 +12,8 @@ TokenSeek 是独立的 DeepSeek Android 客户端。0.10.1 使用 Android 原生
 
 ## 用量
 
+目标是登录后在原生页面直接查询全账户用量，切换日期、密钥或刷新时向开放平台取数。当前版本尚未接入可供 TokenSeek 查询账户历史的官方授权接口。
+
 在「账户 → 开放平台用量」选择 DeepSeek 导出的用量 ZIP，或解压后的 `amount-*.csv`。应用在设备上读取报表，按密钥和模型显示其中的请求与 token 用量。ZIP 含受支持的费用明细时，另按币种显示费用。报表可包含由其他设备和应用发起的请求，范围取决于导出时所选的时间窗和密钥。多份报表按本机账户保存，可切换查看。获取最新数据需要一份新的官方报表。[官方用量导出说明，见「如何分 key 查看用量」](https://static.deepseek.com/faq/index.html?lang=zh)
 
 点聊天输入框的圆环可查看当前分支的上下文估算、整段对话或单条回复的用量。已确认的 token 取自 API 响应的最终记录，缺少最终记录的请求单独标记。[用量字段](https://api-docs.deepseek.com/zh-cn/api/create-message/)
