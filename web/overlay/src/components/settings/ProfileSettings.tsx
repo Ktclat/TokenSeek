@@ -13,10 +13,10 @@ const strings = {
   'zh-CN': {
     photo: '选择照片', resetPhoto: '恢复默认头像', photoBusy: '正在处理照片…',
     photoFormat: '请选择可以打开的 JPG、PNG 或 WebP 照片。', photoSize: '请选择 16 MB 以内、最多 6400 万像素的照片。',
-    profiles: '本机账户', device: '本机', switchProfile: '切换账户', edit: '编辑资料', username: '用户名',
+    profiles: '本机账户', switchDeviceProfile: '切换本机账户', edit: '编辑资料', username: '用户名',
     nickname: '昵称', nicknameHint: '默认使用用户名', newProfile: '添加账户', active: '当前账户',
     use: '切换', save: '保存', create: '创建并切换', cancel: '取消', busy: '正在切换…',
-    help: '每个本机账户单独保存对话、草稿和密钥。用户名和昵称由你填写。',
+    help: '新账户的对话、草稿和密钥单独保存。',
     duplicate: '此用户名已在这台设备上使用。', invalid: '请输入 1 至 64 个字符的用户名。',
     storage: '无法保存账户。请检查本机存储后重试。', switchError: '未能切换账户，请稍后重试。',
     otherKeys: '其他账户的密钥', noKeys: '未保存密钥', switchAndManage: '切换到此账户管理',
@@ -25,10 +25,10 @@ const strings = {
   'en-US': {
     photo: 'Choose photo', resetPhoto: 'Use initials', photoBusy: 'Processing photo…',
     photoFormat: 'Choose a readable JPG, PNG, or WebP photo.', photoSize: 'Choose a photo up to 16 MB and 64 megapixels.',
-    profiles: 'Device accounts', device: 'On this device', switchProfile: 'Switch account', edit: 'Edit profile', username: 'Username',
+    profiles: 'Device accounts', switchDeviceProfile: 'Switch device account', edit: 'Edit profile', username: 'Username',
     nickname: 'Nickname', nicknameHint: 'Defaults to your username', newProfile: 'Add account', active: 'Current account',
     use: 'Switch', save: 'Save', create: 'Create and switch', cancel: 'Cancel', busy: 'Switching…',
-    help: 'Each device account keeps its own chats, drafts, and keys. Choose your own username and nickname.',
+    help: 'The new account keeps its own chats, drafts, and keys.',
     duplicate: 'This username is already in use on this device.', invalid: 'Enter a username of 1–64 characters.',
     storage: 'Could not save this account. Check device storage and try again.', switchError: 'Could not switch accounts. Try again.',
     otherKeys: 'Keys in other accounts', noKeys: 'No saved keys', switchAndManage: 'Switch to manage these keys',
@@ -38,10 +38,9 @@ const strings = {
 export const useProfileText = () => useSettings(state => strings[state.locale])
 
 export function ProfileIdentity({ profile }: { profile: Profile }) {
-  const copy = useProfileText()
   return <>
     <ProfileAvatar profile={profile} />
-    <span className={styles.identity}><strong>{profile.nickname}</strong><small>{copy.device} · @{profile.username}</small></span>
+    <span className={styles.identity}><strong>{profile.nickname}</strong>{profile.username !== profile.nickname && <small>@{profile.username}</small>}</span>
   </>
 }
 
@@ -50,7 +49,7 @@ export function ProfileHeader() {
   const copy = useProfileText()
   return <div className={styles.header}>
     <ProfileIdentity profile={profile} />
-    <button type="button" className={styles.action} onClick={() => pushSettings('profiles')}>{copy.switchProfile}</button>
+    <button type="button" className={styles.action} onClick={() => pushSettings('profiles')}>{copy.switchDeviceProfile}</button>
   </div>
 }
 
@@ -106,7 +105,6 @@ export function ProfileSettings() {
   }
 
   return <section className={styles.panel}>
-    <p className={styles.hint}>{copy.help}</p>
     <ul className={styles.list}>{profiles.map(profile => <li key={profile.id}>
       <ProfileIdentity profile={profile} />
       {profile.id === current.id
@@ -117,6 +115,7 @@ export function ProfileSettings() {
     {error && <p role="alert" className={styles.error}>{error}</p>}
     {busy && <p role="status">{copy.busy}</p>}
     {editing ? <form className={styles.form} onSubmit={submit}>
+      {editing === 'new' && <p className={styles.hint}>{copy.help}</p>}
       <div className={styles.photoEditor}>
         <ProfileAvatar profile={{ nickname: nickname.trim() || username.trim(), avatar: avatar ?? undefined }} />
         <input ref={picker} hidden type="file" accept={avatarTypes} aria-label={copy.photo}

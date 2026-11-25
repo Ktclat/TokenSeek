@@ -17,7 +17,7 @@
 .hint, .error { margin: 0 4px; line-height: 1.55; }
 .error { color: var(--dsw-alias-state-error-primary); }
 .action {
-  min-height: 44px; border: 0; padding: 6px 3px; background: transparent; cursor: pointer;
+  min-width: 48px; min-height: 48px; border: 0; padding: 6px 3px; background: transparent; cursor: pointer;
   color: var(--dsw-alias-brand-text); font: inherit; font-size: 14px;
 }
 .list { padding: 0; margin: 0; overflow: hidden; }

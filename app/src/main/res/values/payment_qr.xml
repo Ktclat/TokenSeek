@@ -1,13 +1,13 @@
 <resources>
     <string name="payment_qr_action">打开支付宝或微信</string>
-    <string name="payment_qr_missing">请先在官方收银台选择支付方式，让一张完整的付款码显示在屏幕上，再点此按钮。</string>
-    <string name="payment_qr_wechat_in_app">当前收银台要求在微信内充值。复制官方充值网址并打开微信后，可将网址发给文件传输助手，点开链接后核对账户并选择充值金额。</string>
+    <string name="payment_qr_missing">请先选择支付方式，并将完整付款码显示在屏幕上。</string>
+    <string name="payment_qr_wechat_in_app">请在微信内打开官方充值页。可将网址发给文件传输助手，点开后核对账户和金额。</string>
     <string name="payment_qr_wechat">微信付款码</string>
     <string name="payment_qr_alipay">支付宝付款码</string>
-    <string name="payment_qr_wechat_scan">请用另一台设备的微信扫一扫，核对收款方和金额。要在本机充值，可复制网址后在微信中打开官方充值页。原扫码订单仍在此处，请先核对已付款的订单，以免重复充值。</string>
-    <string name="payment_qr_alipay_scan">这张付款码可以用另一台设备的支付宝扫一扫。请在支付宝内核对收款方和金额。</string>
+    <string name="payment_qr_wechat_scan">用另一台设备的微信扫码，核对收款方和金额。在本机打开充值页后，请先核对原订单状态。</string>
+    <string name="payment_qr_alipay_scan">用另一台设备的支付宝扫码，核对收款方和金额。</string>
     <string name="payment_qr_return">返回收银台</string>
-    <string name="payment_qr_wechat_open">复制充值网址并打开微信</string>
+    <string name="payment_qr_wechat_open">复制网址并打开微信</string>
     <string name="payment_qr_merchant">DeepSeek 官方充值</string>
     <string name="payment_qr_wechat_unavailable">已复制官方充值网址，可在微信中打开。</string>
 </resources>

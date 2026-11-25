@@ -34,19 +34,19 @@
     <string name="platform_browser">在浏览器继续</string>
     <string name="platform_browser_short">浏览器</string>
     <string name="platform_payment_browser_description">在浏览器打开 DeepSeek 官方充值页</string>
-    <string name="platform_alipay_stay">未能唤起支付宝。可在当前收银台查看其他支付方式，或用右上角的浏览器入口。</string>
+    <string name="platform_alipay_stay">未能打开支付宝。请在收银台选择其他支付方式。</string>
     <string name="platform_back_to_cashier">返回收银台</string>
-    <string name="platform_payment_app">此支付页面请求打开%1$s。</string>
-    <string name="platform_wallet_changed">付款页面已更新。请在当前收银台重新打开钱包。</string>
+    <string name="platform_payment_app">在%1$s中继续付款？</string>
+    <string name="platform_wallet_changed">收银台已更新，请重新打开钱包。</string>
     <string name="platform_open_payment">打开%1$s</string>
     <string name="platform_alipay">支付宝</string>
     <string name="platform_wechat">微信</string>
     <string name="platform_no_handler">未找到可打开此链接的应用。请返回官方页面选择其他方式。</string>
     <string name="platform_unsupported">此链接无法在此窗口打开。可以返回官方页面选择其他方式。</string>
-    <string name="platform_wallet_missing">此设备未能打开%1$s。可以继续使用官方收银台。</string>
+    <string name="platform_wallet_missing">未能打开%1$s，可在收银台继续。</string>
     <string name="platform_web_cashier">继续网页支付</string>
-    <string name="platform_cashier_browser">如无法在此付款，可在浏览器打开 DeepSeek 官方充值页。请核对浏览器中的账号后再付款。</string>
-    <string name="platform_payment_return">请在 DeepSeek 官方平台核对本次充值是否到账。</string>
+    <string name="platform_cashier_browser">浏览器将打开 DeepSeek 充值首页。请核对登录账户和订单。</string>
+    <string name="platform_payment_return">请在官方账单中核对充值结果。</string>
     <string name="platform_check_transactions">查看官方账单</string>
     <string name="platform_transactions">官方账单</string>
 </resources>

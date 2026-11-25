@@ -21,6 +21,7 @@ import android.widget.Button;
 import android.widget.EditText;
 import android.widget.FrameLayout;
 import android.widget.ImageButton;
+import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
@@ -46,6 +47,7 @@ final class NativeChatKeys extends LinearLayout {
     private final Handler ui = new Handler(Looper.getMainLooper());
     private final FrameLayout bar;
     private final ImageButton backButton;
+    private final ImageButton chatButton;
     private final TextView title;
     private final ScrollView scroll;
     private final LinearLayout content;
@@ -77,6 +79,7 @@ final class NativeChatKeys extends LinearLayout {
         setClickable(true);
         setFocusableInTouchMode(true);
         bar = new FrameLayout(context);
+        bar.setMinimumHeight(dp(56));
         addView(bar, -1, -2);
         title = new TextView(context);
         title.setGravity(Gravity.CENTER);
@@ -88,6 +91,10 @@ final class NativeChatKeys extends LinearLayout {
         backButton.setImageResource(R.drawable.platform_back);
         backButton.setOnClickListener(v -> back());
         bar.addView(backButton, new FrameLayout.LayoutParams(dp(52), dp(52), Gravity.START | Gravity.CENTER_VERTICAL));
+        chatButton = new ImageButton(context);
+        chatButton.setImageResource(R.drawable.chat_keys_conversation);
+        chatButton.setOnClickListener(v -> listener.action("chat", owner));
+        bar.addView(chatButton, new FrameLayout.LayoutParams(dp(52), dp(52), Gravity.END | Gravity.CENTER_VERTICAL));
         scroll = new ScrollView(context);
         scroll.setFillViewport(true);
         addView(scroll, new LayoutParams(-1, 0, 1));
@@ -342,6 +349,11 @@ final class NativeChatKeys extends LinearLayout {
         backButton.setColorFilter(ink());
         backButton.setBackground(ripple(null));
         backButton.setContentDescription(text(R.string.chat_keys_back));
+        chatButton.setVisibility(page == Page.LIST ? VISIBLE : GONE);
+        chatButton.setColorFilter(ink());
+        chatButton.setBackground(ripple(null));
+        chatButton.setContentDescription(text(R.string.chat_keys_return));
+        chatButton.setTooltipText(text(R.string.chat_keys_return));
         title.setTextColor(ink());
         title.setTextSize(18f * percent / 100);
         content.removeAllViews();
@@ -374,42 +386,65 @@ final class NativeChatKeys extends LinearLayout {
 
     private void list() {
         LinearLayout official = card();
-        official.setOrientation(HORIZONTAL);
-        official.setGravity(Gravity.CENTER_VERTICAL);
-        LinearLayout description = column();
-        TextView link = label(text(R.string.chat_keys_official), 17, ink());
-        link.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
-        description.addView(link);
-        description.addView(label(text(R.string.chat_keys_official_hint), 14, muted()));
-        official.addView(description, new LayoutParams(0, -2, 1));
-        TextView arrow = label("›", 22, muted());
-        arrow.setPadding(dp(8), 0, 0, 0);
-        arrow.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
-        official.addView(arrow);
-        official.setFocusable(true);
-        official.setContentDescription(text(R.string.chat_keys_official) + "。 " + text(R.string.chat_keys_official_hint));
-        official.setBackground(ripple(shape(surface(), 14)));
-        official.setOnClickListener(v -> listener.action("official", owner));
+        linkRow(official, text(R.string.chat_keys_official), () -> listener.action("official", owner));
         section(text(R.string.chat_keys_account, nickname));
         rows(ring, true);
-        button(content, R.string.chat_keys_add, false, v -> { go(Page.ADD); focusSecret(); });
         if (accounts.length() > 1) {
             section(text(R.string.chat_keys_other));
+            LinearLayout others = card();
             for (int i = 0; i < accounts.length(); i++) {
                 JSONObject profile = accounts.optJSONObject(i);
                 if (profile == null || owner.equals(profile.optString("id"))
                         || !OfficialPlatformActivity.isValidWorkspaceId(profile.optString("id"))) continue;
                 String id = profile.optString("id");
-                Button pick = button(content, R.string.chat_keys_switch, false, v -> {
+                if (others.getChildCount() > 0) divider(others);
+                linkRow(others, profile.optString("nickname", id), () -> {
                     other = id;
                     otherRing = null;
                     read(id);
                     go(Page.OTHER);
                 });
-                pick.setText(profile.optString("nickname", id) + "   ›");
             }
         }
-        button(content, R.string.chat_keys_return, true, v -> listener.action("chat", owner));
+    }
+
+    private ImageView chevron() {
+        ImageView arrow = new ImageView(getContext());
+        arrow.setImageResource(R.drawable.keys_chevron);
+        arrow.setColorFilter(muted());
+        arrow.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+        return arrow;
+    }
+
+    private void linkRow(LinearLayout parent, String name, Runnable open) {
+        LinearLayout row = new LinearLayout(getContext());
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setMinimumHeight(dp(52));
+        row.addView(label(name, 16, ink()), new LayoutParams(0, -2, 1));
+        row.addView(chevron(), dp(20), dp(20));
+        row.setFocusable(true);
+        row.setBackground(ripple(null));
+        row.setOnClickListener(v -> open.run());
+        parent.addView(row, -1, -2);
+    }
+
+    private void addKeyAction(LinearLayout group) {
+        Button add = new Button(getContext(), null, android.R.attr.borderlessButtonStyle);
+        add.setText(text(R.string.chat_keys_add));
+        add.setAllCaps(false);
+        add.setTextColor(accent());
+        add.setTextSize(16f * percent / 100);
+        add.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+        add.setGravity(Gravity.START | Gravity.CENTER_VERTICAL);
+        add.setMinHeight(dp(48));
+        add.setMinimumHeight(dp(48));
+        add.setPadding(0, dp(6), 0, dp(6));
+        add.setBackground(ripple(null));
+        add.setCompoundDrawablesRelativeWithIntrinsicBounds(R.drawable.keys_add, 0, 0, 0);
+        add.setCompoundDrawableTintList(ColorStateList.valueOf(accent()));
+        add.setCompoundDrawablePadding(dp(8));
+        add.setOnClickListener(v -> { go(Page.ADD); focusSecret(); });
+        group.addView(add, -1, -2);
     }
 
     private void rows(JSONObject data, boolean editable) {
@@ -420,11 +455,15 @@ final class NativeChatKeys extends LinearLayout {
                 read(editable ? owner : other);
                 draw();
             });
+            if (editable) addKeyAction(group);
             return;
         }
         JSONArray entries = data.optJSONArray("entries");
         if (entries == null || entries.length() == 0) {
-            group.addView(label(text(R.string.chat_keys_empty), 16, muted()));
+            TextView empty = label(text(R.string.chat_keys_empty), 15, muted());
+            empty.setPadding(0, dp(10), 0, dp(10));
+            group.addView(empty);
+            if (editable) addKeyAction(group);
             return;
         }
         for (int i = 0; i < entries.length(); i++) {
@@ -435,21 +474,25 @@ final class NativeChatKeys extends LinearLayout {
             row.setGravity(Gravity.CENTER_VERTICAL);
             row.setMinimumHeight(dp(62));
             LinearLayout info = column();
-            info.addView(label(display(key), 16, ink()));
+            TextView name = label(display(key), 16, ink());
+            name.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+            info.addView(name);
             boolean active = key.optString("id").equals(data.optString("activeId"));
             String detail = masked(key) + (active ? " · " + text(R.string.chat_keys_active) : "");
             info.addView(label(detail, 14, active ? accent() : muted()));
             row.addView(info, new LayoutParams(0, -2, 1));
             if (editable) {
-                TextView manage = label(text(R.string.chat_keys_manage), 14, accent());
-                manage.setPadding(dp(8), 0, 0, 0);
-                row.addView(manage);
+                row.addView(chevron(), dp(20), dp(20));
                 row.setFocusable(true);
                 row.setBackground(ripple(null));
                 row.setContentDescription(display(key) + ", " + detail + ", " + text(R.string.chat_keys_manage));
                 row.setOnClickListener(v -> { editingId = key.optString("id"); go(Page.EDIT); });
             }
             group.addView(row, -1, -2);
+        }
+        if (editable) {
+            divider(group);
+            addKeyAction(group);
         }
     }
 
@@ -472,7 +515,6 @@ final class NativeChatKeys extends LinearLayout {
         secretInput.setHint(text(R.string.chat_keys_paste));
         nameInput = field(form, R.string.chat_keys_name, false);
         submit = button(content, R.string.chat_keys_verify, true, v -> verify());
-        button(content, R.string.chat_keys_cancel, false, v -> back());
     }
 
     private JSONObject findEditedKey() {
@@ -562,7 +604,8 @@ final class NativeChatKeys extends LinearLayout {
     private LinearLayout card() {
         LinearLayout group = column();
         group.setBackground(shape(surface(), 14));
-        group.setPadding(dp(16), dp(12), dp(16), dp(12));
+        int vertical = page == Page.LIST || page == Page.OTHER ? dp(2) : dp(12);
+        group.setPadding(dp(16), vertical, dp(16), vertical);
         LayoutParams p = new LayoutParams(-1, -2);
         p.bottomMargin = dp(8);
         content.addView(group, p);

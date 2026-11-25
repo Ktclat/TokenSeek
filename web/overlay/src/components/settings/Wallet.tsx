@@ -22,12 +22,11 @@ export const WalletIcon = () => (
 )
 
 const walletMessage = (state: WalletState): TranslationKey | null => {
-  if (state.status === 'unbound') return 'walletUnbound'
+  if (state.status === 'unbound') return null
   if (state.status === 'loading') return 'walletLoading'
   if (state.status === 'invalid') return 'walletInvalid'
   if (state.status !== 'ready') return 'walletLoadFailed'
   if (!state.balance.balance_infos.length) return 'walletEmpty'
-  if (state.balance.balance_infos.every(info => /^-?0+(\.0+)?$/.test(info.total_balance))) return 'walletZero'
   if (!state.balance.is_available) return 'walletUnavailable'
   return null
 }
@@ -36,6 +35,7 @@ const BalanceCard = ({ bound, state, refresh, summary = false }: {
   bound: boolean; summary?: boolean
 } & ReturnType<typeof useBalance>) => {
   const t = useTranslate()
+  const labels = useFundingText()
   const message = walletMessage(state)
   return (
     <div className={styles.balance} aria-label={t('walletTotal')}>
@@ -43,14 +43,14 @@ const BalanceCard = ({ bound, state, refresh, summary = false }: {
         <span>{t('walletTotal')}</span>
         {summary ? (
           <button type="button" className={styles.textButton} onClick={() => pushSettings('wallet')}>{t('wallet')}</button>
-        ) : bound && <button type="button" className={styles.textButton} disabled={state.status === 'loading'} onClick={refresh}>
+        ) : bound ? <button type="button" className={styles.textButton} disabled={state.status === 'loading'} onClick={refresh}>
           {t('walletRefresh')}
-        </button>}
+        </button> : <button type="button" className={styles.textButton} onClick={() => pushSettings('keys')}>{labels.keys}</button>}
       </header>
       <div aria-live="polite">
         {state.status === 'ready' && state.balance.balance_infos.map(info => (
           <div key={info.currency} className={styles.account}>
-            <div className={styles.total}><small>{info.currency}</small> {info.total_balance}</div>
+            <div className={styles.total}>{info.total_balance} <small>{info.currency}</small></div>
             {!summary && <dl className={styles.parts}>
               <div><dt>{t('walletCredit')}</dt><dd>{info.topped_up_balance}</dd></div>
               <div><dt>{t('walletGrant')}</dt><dd>{info.granted_balance}</dd></div>
@@ -77,7 +77,7 @@ export const Wallet = ({ apiKey }: { apiKey: string | null }) => {
   const { state, refresh } = balance
   const message = walletMessage(state)
   const canChat = state.status === 'ready' && state.balance.is_available
-  const accountHint = apiKey ? t('walletAccountHint') : labels.signIn
+  const accountHint = apiKey ? labels.boundHint : labels.signIn
   const native = window.TokenSeekFunding
   const screen = JSON.stringify({
     page: 'wallet', dark, scale, bound: Boolean(apiKey), canChat, status: state.status,
@@ -86,7 +86,7 @@ export const Wallet = ({ apiKey }: { apiKey: string | null }) => {
       currency: row.currency, total: row.total_balance, credit: row.topped_up_balance, grant: row.granted_balance,
     })) : [],
     labels: {
-      ...labels, instructions: labels.nativeInstructions, total: t('walletTotal'), refresh: t('walletRefresh'),
+      ...labels, total: t('walletTotal'), refresh: t('walletRefresh'),
       credit: t('walletCredit'), grant: t('walletGrant'), chat: t('walletChat'),
     },
   })
@@ -122,10 +122,9 @@ export const Wallet = ({ apiKey }: { apiKey: string | null }) => {
   return (
     <section className={styles.wallet} aria-label={labels.title}>
       <BalanceCard bound={Boolean(apiKey)} {...balance} />
-      {!apiKey && <Button size="m" variant="outlined" onClick={() => pushSettings('keys')}>{labels.keys}</Button>}
-      <FundingForm />
-      <p className={styles.hint}>{accountHint}</p>
-      {canChat && <Button variant="outlined" onClick={closeSettings}>{t('walletChat')}</Button>}
+      {state.status === 'invalid' && <Button size="m" variant="outlined" onClick={() => pushSettings('keys')}>{labels.keys}</Button>}
+      <FundingForm accountHint={accountHint} />
+      {canChat && <button type="button" className={styles.chat} onClick={closeSettings}>{t('walletChat')}</button>}
     </section>
   )
 }

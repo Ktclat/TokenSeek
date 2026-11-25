@@ -24,12 +24,11 @@ const labels = {
     available: '可用空间',
     detail: '查看对话用量',
     pending: '待统计',
-    window: '当前分支的上下文',
+    branchRemaining: '本分支剩余上下文（估算）',
     capacity: '模型窗口',
     last: '最近一次请求',
     draftTokens: '草稿估算',
     total: '模型请求用量',
-    note: '根据当前分支最近一次请求的输入、输出和未发送文字估算。实际占用随下一次请求变化。',
     streaming: '回答生成中，结束后更新窗口估算。',
     attachment: '草稿含附件，解析后的 token 数待官方返回。',
     history: '当前分支的最后一轮缺少最终用量。',
@@ -43,12 +42,11 @@ const labels = {
     available: 'Available space',
     detail: 'View conversation usage',
     pending: 'Unknown',
-    window: 'Context on this branch',
+    branchRemaining: 'Estimated context left on this branch',
     capacity: 'Model window',
     last: 'Last request',
     draftTokens: 'Draft estimate',
     total: 'Model request usage',
-    note: 'Estimated from the last request on this branch, including its output, plus unsent text. The next request may use a different amount.',
     streaming: 'The estimate updates when the reply finishes.',
     attachment: 'The draft includes files. Their token count is available after processing.',
     history: 'The latest turn on this branch has no final usage record.',
@@ -198,9 +196,8 @@ function ContextDetails({
       </header>
       <div className={pages.scroll}>
         <div className={pages.inner}>
-          <h2 className={styles.heading}>{copy.window}</h2>
           <section className={styles.card}>
-            <p className={styles.kicker}>{copy.remaining}</p>
+            <h2 className={styles.kicker}>{copy.branchRemaining}</h2>
             <p className={styles.figure}>
               {remaining === null ? copy.pending : remainingLabel(estimate)}
             </p>
@@ -230,7 +227,7 @@ function ContextDetails({
                 </div>
               )}
             </dl>
-            <p className={styles.hint}>{reason ? copy[reason] : copy.note}</p>
+            {reason && <p className={styles.hint}>{copy[reason]}</p>}
             {remaining !== null && remaining / limit <= 0.05 && (
               <p className={styles.hint}>{remaining === 0 ? copy.over : copy.near}</p>
             )}

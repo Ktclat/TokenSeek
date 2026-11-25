@@ -8,7 +8,7 @@ export type NativeSettingsGroup = {
 
 type NativeScreen = {
   page: string; title: string; back: string; dark: boolean; scale: number
-  groups: NativeSettingsGroup[]; sample?: string
+  groups: NativeSettingsGroup[]; sample?: string; chat?: string
 }
 
 export function useNativeSettingsScreen(screen: NativeScreen, onAction: (id: string) => void) {

@@ -1,6 +1,6 @@
 <resources>
     <string name="issued_title">API 密钥已创建</string>
-    <string name="issued_explanation">将新密钥保存在这台设备的当前账户，就可以用它聊天。DeepSeek 只展示一次完整密钥。</string>
+    <string name="issued_explanation">完整密钥仅显示一次。可保存到当前本机账户。</string>
     <string name="issued_save">保存并用于聊天</string>
     <string name="issued_review">查看官方结果</string>
     <string name="issued_saved">已选用新密钥</string>

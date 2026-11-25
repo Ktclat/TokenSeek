@@ -12,6 +12,7 @@ import android.view.Gravity;
 import android.view.View;
 import android.widget.FrameLayout;
 import android.widget.ImageButton;
+import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.RadioButton;
 import android.widget.ScrollView;
@@ -30,6 +31,7 @@ final class NativeSettings extends FrameLayout {
     private final LinearLayout content;
     private final LinearLayout bar;
     private final ImageButton back;
+    private final ImageButton chat;
     private final TextView title;
     private String page = "";
     private boolean dark;
@@ -56,7 +58,10 @@ final class NativeSettings extends FrameLayout {
         title.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
         heading(title);
         bar.addView(title, new LinearLayout.LayoutParams(0, -2, 1));
-        bar.addView(new View(getContext()), dp(54), 1);
+        chat = new ImageButton(getContext());
+        chat.setImageResource(R.drawable.chat_keys_conversation);
+        chat.setOnClickListener(v -> listener.action(page, "chat"));
+        bar.addView(chat, dp(54), dp(54));
 
         scroll = new ScrollView(getContext());
         scroll.setFillViewport(true);
@@ -66,7 +71,7 @@ final class NativeSettings extends FrameLayout {
         content = column();
         int width = getResources().getConfiguration().screenWidthDp > 600 ? dp(600) : -1;
         center.addView(content, new LayoutParams(width, -2, Gravity.TOP | Gravity.CENTER_HORIZONTAL));
-        content.setPadding(dp(16), dp(12), dp(16), dp(28));
+        content.setPadding(dp(16), dp(16), dp(16), dp(28));
     }
 
     void back() { listener.action(page, "back"); }
@@ -86,6 +91,10 @@ final class NativeSettings extends FrameLayout {
         back.setColorFilter(foreground);
         back.setBackground(clickable(null));
         back.setContentDescription(screen.optString("back"));
+        chat.setContentDescription(screen.optString("chat"));
+        chat.setVisibility(screen.has("chat") ? VISIBLE : INVISIBLE);
+        chat.setColorFilter(foreground);
+        chat.setBackground(clickable(null));
         content.removeAllViews();
         if (screen.has("sample")) {
             TextView sample = label(screen.optString("sample"), 16, foreground);
@@ -105,7 +114,7 @@ final class NativeSettings extends FrameLayout {
     private void addGroup(JSONObject group) {
         if (group.has("label")) {
             TextView caption = label(group.optString("label"), 13, muted());
-            caption.setPadding(dp(5), dp(12), dp(5), dp(7));
+            caption.setPadding(dp(8), 0, dp(8), dp(7));
             heading(caption);
             content.addView(caption, -1, -2);
         }
@@ -113,7 +122,7 @@ final class NativeSettings extends FrameLayout {
         groupView.setBackground(card());
         groupView.setClipToOutline(true);
         LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(-1, -2);
-        params.bottomMargin = dp(10);
+        params.bottomMargin = dp(16);
         content.addView(groupView, params);
         JSONArray items = group.optJSONArray("items");
         if (items == null) return;
@@ -123,7 +132,9 @@ final class NativeSettings extends FrameLayout {
             if (i != 0) {
                 View line = new View(getContext());
                 line.setBackgroundColor(dark ? 0xff32343a : 0xffedeef1);
-                groupView.addView(line, -1, dp(1));
+                LinearLayout.LayoutParams divider = new LinearLayout.LayoutParams(-1, 1);
+                divider.setMarginStart(dp(16));
+                groupView.addView(line, divider);
             }
             groupView.addView(item.has("selected") ? choice(item) : link(item), -1, -2);
         }
@@ -155,19 +166,32 @@ final class NativeSettings extends FrameLayout {
         String value = item.optString("value");
         row.setContentDescription(value.isEmpty() ? name : name + ", " + value);
         row.setOnClickListener(v -> listener.action(page, item.optString("id")));
-        row.addView(label(name, 16, ink()), new LinearLayout.LayoutParams(0, -2, 1));
+        TextView primary = label(name, 16, ink());
+        LinearLayout labels = new LinearLayout(getContext());
+        labels.setGravity(Gravity.CENTER_VERTICAL);
+        row.addView(labels, new LinearLayout.LayoutParams(0, -2, 1));
         if (!value.isEmpty()) {
             TextView secondary = label(value, 14, muted());
-            secondary.setMaxWidth(dp(Math.min(260, getResources().getConfiguration().screenWidthDp * 2 / 5)));
-            secondary.setGravity(Gravity.END);
-            secondary.setMaxLines(3);
-            secondary.setEllipsize(android.text.TextUtils.TruncateAt.END);
-            row.addView(secondary);
-        }
-        TextView arrow = label("›", 20, muted());
-        arrow.setPadding(dp(9), 0, 0, 0);
+            int width = dp(Math.min(600, getResources().getConfiguration().screenWidthDp));
+            // Reserve both page and row padding, the chevron and the gap between labels.
+            boolean stack = primary.getPaint().measureText(name) + secondary.getPaint().measureText(value) > width - dp(98);
+            if (stack) {
+                labels.setOrientation(LinearLayout.VERTICAL);
+                labels.addView(primary, -1, -2);
+                secondary.setPadding(0, dp(2), 0, 0);
+            } else {
+                labels.addView(primary, new LinearLayout.LayoutParams(0, -2, 1));
+                secondary.setPaddingRelative(dp(8), 0, 0, 0);
+            }
+            labels.addView(secondary);
+        } else labels.addView(primary, -1, -2);
+        ImageView arrow = new ImageView(getContext());
+        arrow.setImageResource(R.drawable.keys_chevron);
+        arrow.setColorFilter(muted());
         arrow.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
-        row.addView(arrow);
+        LinearLayout.LayoutParams indicator = new LinearLayout.LayoutParams(dp(16), dp(16));
+        indicator.setMarginStart(dp(10));
+        row.addView(arrow, indicator);
         return row;
     }
 

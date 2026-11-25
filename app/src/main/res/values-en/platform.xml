@@ -21,19 +21,19 @@
     <string name="platform_browser">Continue in browser</string>
     <string name="platform_browser_short">Browser</string>
     <string name="platform_payment_browser_description">Open the official DeepSeek top-up page in your browser</string>
-    <string name="platform_alipay_stay">Alipay could not open. Check this checkout page for other ways to pay, or use the Browser button above.</string>
+    <string name="platform_alipay_stay">Could not open Alipay. Choose another payment method at checkout.</string>
     <string name="platform_back_to_cashier">Back to checkout</string>
-    <string name="platform_payment_app">This payment page wants to open %1$s.</string>
-    <string name="platform_wallet_changed">The payment page has changed. Open your wallet again from the current checkout.</string>
+    <string name="platform_payment_app">Continue the payment in %1$s?</string>
+    <string name="platform_wallet_changed">Checkout changed. Open your wallet again.</string>
     <string name="platform_open_payment">Open %1$s</string>
     <string name="platform_alipay">Alipay</string>
     <string name="platform_wechat">WeChat</string>
     <string name="platform_no_handler">No app is available to open this link. Go back to choose another option.</string>
     <string name="platform_unsupported">This link cannot open in this window. Go back to choose another option.</string>
-    <string name="platform_wallet_missing">This device could not open %1$s. You can continue in the official web checkout.</string>
+    <string name="platform_wallet_missing">Could not open %1$s. You can continue at checkout.</string>
     <string name="platform_web_cashier">Continue in web checkout</string>
-    <string name="platform_cashier_browser">If checkout is unavailable here, open the DeepSeek top-up page in your browser. Check which account is signed in there before paying.</string>
-    <string name="platform_payment_return">Check the DeepSeek platform to see whether your top-up was credited.</string>
+    <string name="platform_cashier_browser">The browser opens the DeepSeek top-up page. Check the account and order before paying.</string>
+    <string name="platform_payment_return">Check the official billing record for your top-up.</string>
     <string name="platform_check_transactions">View official billing history</string>
     <string name="platform_transactions">Billing history</string>
 </resources>

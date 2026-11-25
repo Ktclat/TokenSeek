@@ -16,7 +16,7 @@ import android.widget.Button;
 import android.widget.FrameLayout;
 import android.widget.ImageButton;
 import android.widget.LinearLayout;
-import android.widget.PopupMenu;
+import android.widget.ImageView;
 import android.widget.ProgressBar;
 import android.widget.ScrollView;
 import android.widget.TextView;
@@ -50,7 +50,8 @@ final class OfficialKeyPanel extends LinearLayout {
     private final LinearLayout content;
     private final Button usage;
     private final int ink, muted, accent, surface, divider;
-    private PopupMenu popup;
+    private String expandedId;
+    private Runnable closeExpanded;
     private AlertDialog confirmation;
     private boolean resetScroll = true;
     private Runnable restoreScroll;
@@ -99,7 +100,7 @@ final class OfficialKeyPanel extends LinearLayout {
         FrameLayout center = new FrameLayout(context);
         scroll.addView(center);
         content = column();
-        content.setPadding(dp(16), dp(20), dp(16), dp(28));
+        content.setPadding(dp(16), dp(12), dp(16), dp(28));
         int width = getResources().getConfiguration().screenWidthDp > 620 ? dp(620) : FILL;
         center.addView(content, new FrameLayout.LayoutParams(width, WRAP, Gravity.TOP | Gravity.CENTER_HORIZONTAL));
     }
@@ -114,7 +115,7 @@ final class OfficialKeyPanel extends LinearLayout {
     }
 
     void unavailable() {
-        LinearLayout card = stateCard(R.string.key_panel_unavailable, R.string.key_panel_unavailable_detail);
+        LinearLayout card = stateCard(R.string.key_panel_unavailable, 0);
         addPrimary(card, R.string.key_panel_retry, "retry");
         card.addView(button(R.string.key_panel_official, false, () -> listener.action("official")), FILL, WRAP);
     }
@@ -125,12 +126,12 @@ final class OfficialKeyPanel extends LinearLayout {
     }
 
     void awaitingConfirmation() {
-        LinearLayout card = stateCard(R.string.key_panel_pending_title, R.string.key_panel_pending_detail);
+        LinearLayout card = stateCard(R.string.key_panel_pending_title, 0);
         addPrimary(card, R.string.key_panel_official, "official");
     }
 
     void reviewOnPlatform() {
-        LinearLayout card = stateCard(R.string.key_panel_review, R.string.key_panel_review_detail);
+        LinearLayout card = stateCard(R.string.key_panel_review, 0);
         addPrimary(card, R.string.key_panel_official, "official");
     }
 
@@ -154,32 +155,48 @@ final class OfficialKeyPanel extends LinearLayout {
         JSONArray rows = snapshot.getJSONArray("rows");
         if (rows.length() > 300) throw new JSONException("Too many key rows");
         Set<String> ids = new HashSet<>();
+        String restoreKey = expandedId;
+        closeTransient();
+        boolean previous = snapshot.optBoolean("previous");
+        boolean next = snapshot.optBoolean("next");
+        LinearLayout header = new LinearLayout(getContext());
+        header.setPadding(dp(4), 0, 0, 0);
+        header.setGravity(Gravity.CENTER_VERTICAL);
+        LayoutParams headerBox = new LayoutParams(FILL, WRAP);
+        headerBox.bottomMargin = dp(6);
+        if (rows.length() > 0) {
+            int countText = previous || next ? R.string.key_view_page_count : R.string.key_view_count;
+            TextView count = label(getContext().getString(countText, rows.length()), 14, muted);
+            heading(count);
+            header.addView(count, new LayoutParams(0, WRAP, 1));
+        }
+        boolean canCreate = snapshot.getBoolean("create");
+        if (canCreate && rows.length() > 0) {
+            Button create = button(R.string.key_panel_create, true, () -> listener.action("create"));
+            header.addView(create, WRAP, WRAP);
+        }
         LinearLayout card = card();
         if (rows.length() == 0) {
             TextView empty = label(str(R.string.key_panel_empty), 17, ink);
             empty.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
             card.addView(empty, FILL, WRAP);
-        } else {
-            TextView count = label(getContext().getString(R.string.key_view_count, rows.length()), 13, muted);
-            heading(count);
-            card.addView(count, FILL, WRAP);
+            if (canCreate) addPrimary(card, R.string.key_panel_create, "create");
         }
-        if (snapshot.getBoolean("create")) addPrimary(card, R.string.key_panel_create, "create");
-        else if (snapshot.optBoolean("verification")) {
+        if (!canCreate && snapshot.optBoolean("verification")) {
             addDetail(card, str(R.string.key_panel_verify_detail), false);
             addPrimary(card, R.string.key_panel_verify, "official");
+            if (rows.length() > 0) addLine(card);
         }
+        if (rows.length() > 0) card.setPadding(dp(16), dp(4), dp(16), dp(4));
         for (int i = 0; i < rows.length(); i++) {
             if (i > 0) addLine(card);
-            addRow(card, rows.getJSONObject(i), ids);
+            addRow(card, rows.getJSONObject(i), ids, restoreKey);
         }
-        boolean previous = snapshot.optBoolean("previous");
-        boolean next = snapshot.optBoolean("next");
         int position = resetScroll ? 0 : scroll.getScrollY();
         resetScroll = false;
-        closeTransient();
         usage.setVisibility(snapshot.optBoolean("usage") ? VISIBLE : GONE);
         content.removeAllViews();
+        if (header.getChildCount() > 0) content.addView(header, headerBox);
         content.addView(card, FILL, WRAP);
         if (previous || next) {
             LinearLayout pages = new LinearLayout(getContext());
@@ -202,7 +219,7 @@ final class OfficialKeyPanel extends LinearLayout {
         }
     }
 
-    private void addRow(LinearLayout card, JSONObject row, Set<String> ids) throws JSONException {
+    private void addRow(LinearLayout card, JSONObject row, Set<String> ids, String restoreKey) throws JSONException {
         String id = row.getString("id");
         String name = field(row, "name", 256);
         String tracking = field(row, "trackingId", 52);
@@ -219,28 +236,81 @@ final class OfficialKeyPanel extends LinearLayout {
         boolean rename = row.optBoolean("rename");
         boolean revoke = row.optBoolean("revoke");
         LinearLayout item = column();
-        item.setPadding(0, dp(7), 0, dp(15));
         card.addView(item, FILL, WRAP);
         LinearLayout lead = new LinearLayout(getContext());
+        lead.setMinimumHeight(dp(62));
+        lead.setPadding(0, dp(10), 0, dp(10));
         lead.setGravity(Gravity.CENTER_VERTICAL);
         item.addView(lead, FILL, WRAP);
+        LinearLayout summary = column();
+        lead.addView(summary, new LayoutParams(0, WRAP, 1));
         TextView title = label(name, 16, ink);
-        title.setMaxLines(3);
+        title.setMaxLines(2);
         title.setEllipsize(TextUtils.TruncateAt.END);
-        title.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
-        heading(title);
-        lead.addView(title, new LayoutParams(0, WRAP, 1));
-        if (managed) addDetail(item, str(R.string.key_panel_harness), false);
-        else {
-            Button more = button(R.string.key_panel_more, false, null);
-            more.setContentDescription(getContext().getString(R.string.key_panel_manage, name));
-            more.setOnClickListener(v -> showMenu(more, id, name, rename, revoke));
-            lead.addView(more, WRAP, WRAP);
+        title.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+        summary.addView(title, FILL, WRAP);
+        String metadata = tracking.isEmpty() ? masked : getContext().getString(R.string.key_panel_tracking, tracking);
+        if (managed) addDetail(summary, str(R.string.key_panel_harness), false);
+        if (!metadata.isEmpty()) addDetail(summary, metadata, true);
+        boolean hasDetails = !managed || (!tracking.isEmpty() && !masked.isEmpty()) || !created.isEmpty() || !used.isEmpty();
+        if (!hasDetails) {
+            title.setMaxLines(Integer.MAX_VALUE);
+            return;
         }
-        if (!masked.isEmpty()) addDetail(item, masked, true);
-        if (!tracking.isEmpty()) addDetail(item, getContext().getString(R.string.key_panel_tracking, tracking), true);
-        if (!created.isEmpty()) addDetail(item, getContext().getString(R.string.key_view_created, created), false);
-        if (!used.isEmpty()) addDetail(item, getContext().getString(R.string.key_view_last_used, used), false);
+        ImageView arrow = new ImageView(getContext());
+        arrow.setImageResource(R.drawable.keys_expand);
+        arrow.setColorFilter(muted);
+        arrow.setImportantForAccessibility(IMPORTANT_FOR_ACCESSIBILITY_NO);
+        LayoutParams arrowBox = new LayoutParams(dp(20), dp(20));
+        arrowBox.setMarginStart(dp(8));
+        lead.addView(arrow, arrowBox);
+        lead.setFocusable(true);
+        lead.setBackground(ripple(Color.TRANSPARENT, 8));
+        String description = name + (metadata.isEmpty() ? "" : ", " + metadata)
+                + (managed ? ", " + str(R.string.key_panel_harness) : "");
+        lead.setContentDescription(getContext().getString(R.string.key_panel_expand, description));
+        Runnable expand = () -> {
+            collapseRow();
+            LinearLayout details = column();
+            details.setPadding(0, 0, 0, dp(10));
+            if (!masked.isEmpty() && !tracking.isEmpty()) addDetail(details, masked, true);
+            if (!created.isEmpty()) addDetail(details, getContext().getString(R.string.key_view_created, created), false);
+            if (!used.isEmpty()) addDetail(details, getContext().getString(R.string.key_view_last_used, used), false);
+            if (!managed) addActions(details, id, name, rename, revoke);
+            item.addView(details, FILL, WRAP);
+            title.setMaxLines(Integer.MAX_VALUE);
+            arrow.setRotation(180);
+            lead.setContentDescription(getContext().getString(R.string.key_panel_collapse, description));
+            expandedId = id;
+            closeExpanded = () -> {
+                item.removeView(details);
+                title.setMaxLines(2);
+                arrow.setRotation(0);
+                lead.setContentDescription(getContext().getString(R.string.key_panel_expand, description));
+            };
+        };
+        lead.setOnClickListener(v -> {
+            if (id.equals(expandedId)) collapseRow();
+            else expand.run();
+        });
+        if (id.equals(restoreKey)) expand.run();
+    }
+
+    private void addActions(LinearLayout details, String id, String name, boolean rename, boolean revoke) {
+        LinearLayout actions = new LinearLayout(getContext());
+        if (rename) actions.addView(button(R.string.key_panel_rename, false, () -> listener.action("rename:" + id)),
+                new LayoutParams(0, WRAP, 1));
+        if (revoke) {
+            Button delete = button(R.string.key_panel_revoke, false, () -> confirmRevoke(id, name));
+            boolean dark = (getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES;
+            delete.setTextColor(dark ? 0xffffa29b : 0xffa62d26);
+            actions.addView(delete, new LayoutParams(0, WRAP, 1));
+        }
+        if (!rename || !revoke) actions.addView(button(R.string.key_panel_show, false, () -> listener.action("show:" + id)),
+                new LayoutParams(0, WRAP, 1));
+        LayoutParams box = new LayoutParams(FILL, WRAP);
+        box.topMargin = dp(4);
+        details.addView(actions, box);
     }
 
     private static boolean validTrackingId(String text) {
@@ -265,22 +335,6 @@ final class OfficialKeyPanel extends LinearLayout {
         return value;
     }
 
-    private void showMenu(Button anchor, String id, String name, boolean rename, boolean revoke) {
-        PopupMenu menu = new PopupMenu(getContext(), anchor, Gravity.END);
-        if (rename) menu.getMenu().add(0, R.string.key_panel_rename, 0, R.string.key_panel_rename);
-        if (revoke) menu.getMenu().add(0, R.string.key_panel_revoke, 1, R.string.key_panel_revoke);
-        if (!rename || !revoke) menu.getMenu().add(0, R.string.key_panel_show, 2, R.string.key_panel_show);
-        menu.setOnMenuItemClickListener(item -> {
-            int choice = item.getItemId();
-            if (choice == R.string.key_panel_revoke) confirmRevoke(id, name);
-            else listener.action((choice == R.string.key_panel_rename ? "rename:" : "show:") + id);
-            return true;
-        });
-        menu.setOnDismissListener(closed -> { if (popup == closed) popup = null; });
-        popup = menu;
-        menu.show();
-    }
-
     private void confirmRevoke(String id, String name) {
         AlertDialog dialog = new AlertDialog.Builder(getContext())
                 .setTitle(R.string.key_panel_revoke_title)
@@ -295,15 +349,20 @@ final class OfficialKeyPanel extends LinearLayout {
 
     boolean handleBack() {
         if (confirmation != null) { confirmation.dismiss(); confirmation = null; return true; }
-        if (popup != null) { popup.dismiss(); popup = null; return true; }
+        if (closeExpanded != null) { collapseRow(); return true; }
         return false;
+    }
+
+    private void collapseRow() {
+        if (closeExpanded != null) closeExpanded.run();
+        closeExpanded = null;
+        expandedId = null;
     }
 
     private void closeTransient() {
         if (confirmation != null) confirmation.dismiss();
-        if (popup != null) popup.dismiss();
         confirmation = null;
-        popup = null;
+        collapseRow();
     }
 
     @Override protected void onDetachedFromWindow() {

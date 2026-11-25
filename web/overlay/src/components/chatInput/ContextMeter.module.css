@@ -109,7 +109,7 @@
 .readings {
   display: grid;
   gap: 6px;
-  margin: 0 0 12px;
+  margin: 0;
 }
 .readings div {
   display: flex;
@@ -118,8 +118,10 @@
   flex-wrap: wrap;
 }
 .readings dd {
+  margin-inline-start: auto;
+  text-align: end;
   font-variant-numeric: tabular-nums;
 }
-.hint + .hint {
-  margin-top: 6px;
+.hint {
+  margin-top: 10px;
 }

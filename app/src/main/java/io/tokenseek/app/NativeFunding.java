@@ -11,6 +11,10 @@ import android.graphics.drawable.RippleDrawable;
 import android.os.Build;
 import android.text.Editable;
 import android.text.InputType;
+import android.text.SpannableString;
+import android.text.Spanned;
+import android.text.style.ForegroundColorSpan;
+import android.text.style.RelativeSizeSpan;
 import android.text.TextWatcher;
 import android.view.Gravity;
 import android.view.View;
@@ -138,10 +142,8 @@ final class NativeFunding extends FrameLayout {
         balance = card();
         body.addView(balance, -1, -2);
         buildAmount(suggestions, amount);
-        hint = label("", 13, muted(), false);
-        body.addView(hint, spaced(12));
-        chat = button(word("chat"), false, v -> listener.action("chat", ""));
-        body.addView(chat, spaced(12));
+        chat = textAction(word("chat"), v -> listener.action("chat", ""));
+        body.addView(chat, spaced(4));
         body.requestFocus();
     }
 
@@ -149,11 +151,13 @@ final class NativeFunding extends FrameLayout {
         balance.removeAllViews();
         LinearLayout header = row();
         balance.addView(header);
-        header.addView(label(word("total"), 17, ink(), true), weight());
+        header.addView(label(word("total"), 15, muted(), false), weight());
         if (screen.optBoolean("bound")) {
-            Button refresh = button(word("refresh"), false, v -> listener.action("refresh", ""));
+            Button refresh = textAction(word("refresh"), v -> listener.action("refresh", ""));
             enable(refresh, !"loading".equals(screen.optString("status")));
             header.addView(refresh);
+        } else {
+            header.addView(textAction(word("keys"), v -> listener.action("keys", "")));
         }
         JSONArray values = screen.optJSONArray("balances");
         if (values != null) for (int i = 0; i < values.length(); i++) {
@@ -166,60 +170,59 @@ final class NativeFunding extends FrameLayout {
                 gap.topMargin = dp(14);
                 balance.addView(line, gap);
             }
-            balance.addView(label(info.optString("currency") + "  " + info.optString("total"), 25, ink(), true), spaced(8));
-            addBalanceLine("credit", info.optString("credit"));
-            addBalanceLine("grant", info.optString("grant"));
+            String amount = info.optString("total");
+            SpannableString total = new SpannableString(amount + "  " + info.optString("currency"));
+            total.setSpan(new RelativeSizeSpan(0.5f), amount.length(), total.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+            total.setSpan(new ForegroundColorSpan(muted()), amount.length(), total.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+            TextView figure = label("", 32, ink(), true);
+            figure.setText(total);
+            figure.setFontFeatureSettings("tnum");
+            balance.addView(figure, spaced(i == 0 ? 0 : 8));
+            LinearLayout details = row();
+            details.setGravity(Gravity.TOP);
+            details.addView(balancePart("credit", info.optString("credit")), weight());
+            LinearLayout.LayoutParams second = weight();
+            second.setMarginStart(dp(12));
+            details.addView(balancePart("grant", info.optString("grant")), second);
+            balance.addView(details, spaced(12));
         }
         String message = screen.optString("message");
-        if (!message.isEmpty()) {
+        if (!message.isEmpty() && screen.optBoolean("bound")) {
             TextView status = label(message, 14, muted(), false);
             status.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);
             balance.addView(status, spaced(8));
         }
-        if (!screen.optBoolean("bound") || "invalid".equals(screen.optString("status"))) {
+        if ("invalid".equals(screen.optString("status"))) {
             balance.addView(button(word("keys"), false, v -> listener.action("keys", "")), spaced(10));
         }
     }
 
-    private void addBalanceLine(String key, String value) {
-        LinearLayout pair = row();
-        balance.addView(pair, spaced(4));
-        pair.addView(label(word(key), 14, muted(), false), weight());
-        TextView figure = label(value, 14, ink(), false);
-        figure.setGravity(Gravity.END);
-        pair.addView(figure, weight());
+    private LinearLayout balancePart(String key, String amount) {
+        LinearLayout part = stack();
+        part.addView(label(word(key), 13, muted(), false));
+        TextView figure = label(amount, 16, ink(), false);
+        figure.setFontFeatureSettings("tnum");
+        part.addView(figure, spaced(2));
+        return part;
     }
 
     private void buildAmount(JSONArray suggestions, String raw) {
         LinearLayout form = card();
-        body.addView(form, spaced(16));
+        body.addView(form, spaced(12));
+        LinearLayout header = row();
+        form.addView(header);
         TextView heading = label(word("amount"), 17, ink(), true);
         if (Build.VERSION.SDK_INT >= 28) heading.setAccessibilityHeading(true);
-        form.addView(heading);
-        LinearLayout options = row();
-        form.addView(options, spaced(10));
-        for (int i = 0; i < suggestions.length(); i++) {
-            String value = suggestions.optString(i);
-            if (parseAmount(value).value.isEmpty()) continue;
-            Button choice = button("¥" + value, false, v -> {
-                input.setText(value);
-                input.setSelection(value.length());
-            });
-            choice.setTag(parseAmount(value).value);
-            presets.add(choice);
-            LinearLayout.LayoutParams cell = weight();
-            if (i > 0) cell.setMarginStart(dp(8));
-            options.addView(choice, cell);
-        }
-        TextView caption = label(word("custom"), 14, muted(), false);
-        form.addView(caption, spaced(14));
+        header.addView(heading, weight());
+        copy = textAction(word("copy"), v -> copyAmount());
+        header.addView(copy);
         LinearLayout field = row();
-        field.setBackground(shape(surface(), true, 10));
-        field.setPadding(dp(12), 0, dp(12), 0);
-        form.addView(field, spaced(5));
+        field.setBackground(shape(dark ? 0xff2a2b31 : 0xfff4f5f8, false, 12));
+        field.setPadding(dp(14), 0, dp(10), 0);
+        form.addView(field, spaced(6));
         input = new EditText(getContext());
         input.setId(View.generateViewId());
-        caption.setLabelFor(input.getId());
+        heading.setLabelFor(input.getId());
         input.setSingleLine(true);
         // A numeric IME is convenient; filtering pasted text could silently turn "-5" into "5".
         input.setRawInputType(InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_DECIMAL);
@@ -227,8 +230,9 @@ final class NativeFunding extends FrameLayout {
         input.setBackgroundColor(Color.TRANSPARENT);
         input.setTextColor(ink());
         input.setHintTextColor(muted());
-        input.setTextSize(18 * scale);
-        input.setMinHeight(dp(48));
+        input.setTextSize(22 * scale);
+        input.setFontFeatureSettings("tnum");
+        input.setMinHeight(dp(54));
         input.setPadding(0, dp(6), dp(6), dp(6));
         input.setHint("0.00");
         input.setText(raw);
@@ -238,14 +242,29 @@ final class NativeFunding extends FrameLayout {
         error = label("", 13, dark ? 0xffffa5a5 : 0xffa02a29, false);
         error.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);
         form.addView(error, spaced(4));
-        form.addView(label(word("instructions"), 13, muted(), false), spaced(8));
+        LinearLayout options = row();
+        form.addView(options, spaced(10));
+        for (int i = 0; i < suggestions.length(); i++) {
+            String value = suggestions.optString(i);
+            String canonical = parseAmount(value).value;
+            if (canonical.isEmpty()) continue;
+            Button choice = button("¥" + value, false, v -> {
+                input.setText(value);
+                input.setSelection(value.length());
+            });
+            choice.setTag(canonical);
+            presets.add(choice);
+            LinearLayout.LayoutParams cell = weight();
+            if (presets.size() > 1) cell.setMarginStart(dp(8));
+            options.addView(choice, cell);
+        }
         checkout = button(word("checkout"), true, v -> {
             String selected = parseAmount(input.getText().toString()).value;
             if (!selected.isEmpty()) listener.action("checkout", selected);
         });
-        copy = button(word("copy"), false, v -> copyAmount());
-        form.addView(checkout, spaced(12));
-        form.addView(copy, spaced(8));
+        form.addView(checkout, spaced(16));
+        hint = label("", 13, muted(), false);
+        form.addView(hint, spaced(10));
         input.addTextChangedListener(new TextWatcher() {
             @Override public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
             @Override public void onTextChanged(CharSequence s, int start, int before, int count) { updateAmount(s.toString()); }
@@ -260,12 +279,16 @@ final class NativeFunding extends FrameLayout {
         error.setVisibility(amount.error.isEmpty() ? GONE : VISIBLE);
         enable(checkout, !amount.value.isEmpty());
         enable(copy, !amount.value.isEmpty());
+        copy.setVisibility(amount.value.isEmpty() ? INVISIBLE : VISIBLE);
+        hint.setVisibility(amount.value.isEmpty() ? GONE : VISIBLE);
         for (Button preset : presets) {
             boolean selected = amount.value.equals(preset.getTag());
             if (selected == preset.isSelected()) continue;
             preset.setSelected(selected);
-            preset.setTextColor(selected ? Color.WHITE : accent());
-            preset.setBackground(ripple(selected ? blue() : surface(), !selected, 12));
+            preset.setTextColor(selected ? accent() : ink());
+            GradientDrawable fill = shape(selected ? (dark ? 0xff283057 : 0xffeef1ff) : surface(), true, 12);
+            if (selected) fill.setStroke(dp(2), accent());
+            preset.setBackground(new RippleDrawable(ColorStateList.valueOf(dark ? 0x33ffffff : 0x18000000), fill, null));
         }
     }
 
@@ -291,14 +314,22 @@ final class NativeFunding extends FrameLayout {
         button.setAllCaps(false);
         button.setMinWidth(0);
         button.setMinimumWidth(0);
-        button.setMinHeight(dp(46));
+        button.setMinHeight(dp(48));
         button.setPadding(dp(10), dp(6), dp(10), dp(6));
         button.setTextSize(14 * scale);
-        button.setTextColor(primary ? Color.WHITE : accent());
+        button.setTextColor(primary ? Color.WHITE : ink());
         button.setStateListAnimator(null);
         button.setBackground(ripple(primary ? blue() : surface(), !primary, 12));
         button.setOnClickListener(listener);
         return button;
+    }
+
+    private Button textAction(String text, OnClickListener action) {
+        Button link = button(text, false, action);
+        link.setTextColor(accent());
+        link.setMinWidth(dp(48));
+        link.setBackground(ripple(Color.TRANSPARENT, false, 12));
+        return link;
     }
 
     private void enable(Button button, boolean enabled) {
