@@ -10,14 +10,14 @@ import prefs from './PreferencePanels.module.css'
 
 const labels = {
   'zh-CN': {
-    home: '设置', account: '账户', profile: 'DeepSeek 账户', officialKeys: '开放平台 API 密钥', keys: '聊天使用的密钥', app: '应用',
+    home: '设置', account: '账户', profile: 'DeepSeek 账户', officialKeys: 'API 密钥管理', keys: '聊天使用的密钥', app: '应用',
     theme: '外观', font: '字体大小', personalization: '个性化', general: '通用', data: '数据管理', back: '返回',
     mode: '主题', system: '跟随系统', light: '浅色', dark: '深色', compact: '较小', standard: '标准', large: '较大', largest: '最大',
     preview: '预览', sample: '今天想聊点什么？', answer: '回答风格', brief: '简洁', detailed: '详细', lang: '默认回答语言',
     auto: '跟随提问', zh: '中文', en: '英语',
   },
   'en-US': {
-    home: 'Settings', account: 'Account', profile: 'DeepSeek account', officialKeys: 'DeepSeek platform API keys', keys: 'Keys for chat', app: 'App',
+    home: 'Settings', account: 'Account', profile: 'DeepSeek account', officialKeys: 'Manage platform API keys', keys: 'Keys for chat', app: 'App',
     theme: 'Appearance', font: 'Font size', personalization: 'Personalization', general: 'General', data: 'Data management', back: 'Back',
     mode: 'Theme', system: 'System', light: 'Light', dark: 'Dark', compact: 'Small', standard: 'Standard', large: 'Large', largest: 'Extra large',
     preview: 'Preview', sample: 'What would you like to talk about?', answer: 'Response style', brief: 'Concise', detailed: 'Detailed', lang: 'Default response language',

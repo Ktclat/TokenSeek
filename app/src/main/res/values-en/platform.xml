@@ -24,6 +24,7 @@
     <string name="platform_alipay_stay">Alipay could not open. Check this checkout page for other ways to pay, or use the Browser button above.</string>
     <string name="platform_back_to_cashier">Back to checkout</string>
     <string name="platform_payment_app">This payment page wants to open %1$s.</string>
+    <string name="platform_wallet_changed">The payment page has changed. Open your wallet again from the current checkout.</string>
     <string name="platform_open_payment">Open %1$s</string>
     <string name="platform_alipay">Alipay</string>
     <string name="platform_wechat">WeChat</string>

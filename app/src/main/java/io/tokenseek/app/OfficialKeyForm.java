@@ -22,6 +22,7 @@ final class OfficialKeyForm {
     private static final String ON_PAGE = "window === window.top && location.href === " + JSONObject.quote(PAGE);
     private final Context context;
     private final String script;
+    private final OfficialIssuedKey issued;
     private Attempt active;
 
     private static final class Attempt {
@@ -31,34 +32,47 @@ final class OfficialKeyForm {
         final String identifier;
         final BooleanSupplier current;
         final Consumer<Boolean> complete;
+        final Runnable needsWebsite;
         String ticket;
+        String chosenName;
         AlertDialog dialog;
         Runnable pending;
 
-        Attempt(WebView view, String command, String name, String identifier, BooleanSupplier current, Consumer<Boolean> complete) {
+        Attempt(WebView view, String command, String name, String identifier, BooleanSupplier current, Consumer<Boolean> complete, Runnable needsWebsite) {
             this.view = view;
             this.command = command;
             this.name = name;
             this.identifier = identifier;
             this.current = current;
             this.complete = complete;
+            this.needsWebsite = needsWebsite;
         }
     }
 
     OfficialKeyForm(Context context) {
+        this(context, null);
+    }
+
+    OfficialKeyForm(Context context, String workspaceId) {
         this.context = context;
+        issued = new OfficialIssuedKey(context, workspaceId);
         script = LocalSite.bundledScript(context, R.raw.platform_key_form);
     }
 
     /** complete(true) keeps the website in front. An external cancel invalidates the request silently. */
     void begin(WebView view, String command, String name, String identifier, BooleanSupplier isCurrent, Consumer<Boolean> complete) {
+        begin(view, command, name, identifier, isCurrent, complete, () -> complete.accept(true));
+    }
+
+    void begin(WebView view, String command, String name, String identifier, BooleanSupplier isCurrent,
+               Consumer<Boolean> complete, Runnable needsWebsite) {
         cancel();
         if (script.isEmpty() || view == null || !PAGE.equals(view.getUrl()) || !isCurrent.getAsBoolean()
                 || !("create".equals(command) || "rename".equals(command) || "revoke".equals(command))) {
-            complete.accept(true);
+            needsWebsite.run();
             return;
         }
-        active = new Attempt(view, command, name, identifier, isCurrent, complete);
+        active = new Attempt(view, command, name, identifier, isCurrent, complete, needsWebsite);
         probe(active, 0);
     }
 
@@ -84,11 +98,11 @@ final class OfficialKeyForm {
                 } else if (attempts < 7) {
                     later(request, () -> probe(request, attempts + 1), 150);
                 } else {
-                    finish(request, true);
+                    unsupported(request);
                 }
             });
         } catch (RuntimeException unavailable) {
-            finish(request, true);
+            unsupported(request);
         }
     }
 
@@ -145,10 +159,11 @@ final class OfficialKeyForm {
                 return;
             }
             // Only this explicit confirmation can stage the form. Dismiss before scheduling the single submit.
+            request.chosenName = value;
             v.setEnabled(false);
             dialog.dismiss();
             call(request, "stage(" + request.ticket + "," + JSONObject.quote(value) + ")", staged -> {
-                if (!staged) { finish(request, true); return; }
+                if (!staged) { unsupported(request); return; }
                 later(request, () -> submit(request), 120);
             });
         }));
@@ -157,15 +172,18 @@ final class OfficialKeyForm {
 
     private void submit(Attempt request) {
         call(request, "submit(" + request.ticket + ")", sent -> {
-            // Any one-time credential stays in the website. Never examine the create result.
-            if (!sent || "create".equals(request.command)) finish(request, true);
-            else waitForResult(request, 0);
+            if (!sent) unsupported(request);
+            else if ("create".equals(request.command)) {
+                issued.begin(request.view, request.ticket, request.chosenName, () -> current(request),
+                        website -> finish(request, website));
+            } else waitForResult(request, 0);
         });
     }
 
     private void waitForResult(Attempt request, int attempt) {
         later(request, () -> call(request, "completed(" + request.ticket + ")", confirmed -> {
-            if (confirmed || attempt >= 6) finish(request, !confirmed);
+            if (confirmed) finish(request, false);
+            else if (attempt >= 24) unsupported(request);
             else waitForResult(request, attempt + 1);
         }), 180);
     }
@@ -177,8 +195,14 @@ final class OfficialKeyForm {
                 if (current(request)) callback.accept("true".equals(result));
             });
         } catch (RuntimeException unavailable) {
-            finish(request, true);
+            unsupported(request);
         }
+    }
+
+    private void unsupported(Attempt request) {
+        if (!current(request)) return;
+        cancel();
+        request.needsWebsite.run();
     }
 
     private void finish(Attempt request, boolean showWebsite) {
@@ -200,6 +224,7 @@ final class OfficialKeyForm {
     void cancel() {
         Attempt request = active;
         active = null;
+        issued.cancel();
         if (request == null) return;
         if (request.pending != null) request.view.removeCallbacks(request.pending);
         if (request.dialog != null) request.dialog.dismiss();

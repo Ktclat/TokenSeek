@@ -21,12 +21,12 @@
     trackingId: /^(?:tracking[\s_-]*id|跟踪\s*id|追踪\s*id)$/i,
     masked: /^(?:key|api\s*key|secret key|api secret key|密钥|秘钥|api\s*[密秘]钥)$/i,
     created: /^(?:created(?: at| on| date)?|creation (?:date|time)|创建(?:日期|时间)?)$/i,
-    lastUsed: /^(?:last used(?: at| on)?|last use(?:d)? (?:date|time)|最后使用(?:日期|时间)?|上次使用(?:日期|时间)?|最近使用(?:日期|时间)?)$/i,
+    lastUsed: /^(?:last used(?: at| on)?|last use(?:d)? (?:date|time)|最[后新]使用(?:日期|时间)?|上次使用(?:日期|时间)?|最近使用(?:日期|时间)?)$/i,
     actions: /^(?:actions?|操作)?$/i,
   };
   const actions = {
     create: /^(?:\+\s*)?(?:create (?:a |an )?(?:new )?(?:api |secret )?key|创建(?:新的?|一个)?\s*(?:api\s*(?:key|密钥)|[密秘]钥))$/i,
-    usage: /^(?:按\s*api\s*key\s*(?:查看|查询)用量|(?:view |check )?usage (?:by|per) api key)$/i,
+    usage: /^(?:按\s*api\s*key\s*(?:查看|查询)用量|(?:view |check )?usage (?:by|per) api key|api key usage)$/i,
     previous: /^(?:previous(?: page)?|prev(?:ious)?|go to (?:the )?previous page|上一页|前一页)$/i,
     next: /^(?:next(?: page)?|go to (?:the )?next page|下一页|后一页)$/i,
   };
@@ -203,8 +203,25 @@
     return false;
   }
 
-  // Only explicit text or named symbols convey an operation. Never infer intent from
-  // SVG path geometry, icon order, color, or a button's position.
+  // The platform's current icon buttons have no accessible name until their tooltip opens.
+  // These fingerprints identify the two published assets only inside the official actions cell.
+  // New artwork stays unrecognized. The form and its owner are checked again before submission.
+  function platformIcon(button) {
+    if (!button.matches('.ds-button--icon[role="button"]') ||
+        !button.closest('.ds-table--embedded > table > tbody > tr > td.ds-table-td:last-child')) return '';
+    const icons = button.querySelectorAll('svg');
+    const svg = icons[0];
+    if (icons.length !== 1 || svg.getAttribute('viewBox') !== '0 0 16 16' ||
+        svg.children.length !== 1 || svg.firstElementChild.localName !== 'path') return '';
+    const path = svg.firstElementChild.getAttribute('d') || '';
+    if (path.length !== 1531 && path.length !== 1695) return '';
+    let hash = 2166136261;
+    for (let i = 0; i < path.length; ++i) hash = Math.imul(hash ^ path.charCodeAt(i), 16777619);
+    if (path.length === 1531 && (hash >>> 0) === 0xcd7976ad) return 'edit';
+    if (path.length === 1695 && (hash >>> 0) === 0x3952e481) return 'delete';
+    return '';
+  }
+
   function namedIcon(button) {
     const icons = button.matches('svg') ? [button] : [...button.querySelectorAll('svg')];
     const paintedIcons = icons.filter(icon => icon.getClientRects().length && getComputedStyle(icon).visibility === 'visible');
@@ -220,6 +237,8 @@
       }
     }
     if (label) return label;
+    const published = platformIcon(button);
+    if (published) return published;
     const use = svg.querySelector('use');
     const symbol = use && (use.getAttribute('href') || use.getAttribute('xlink:href'));
     const names = [svg.getAttribute('data-icon') || '', ...(svg.getAttribute('class') || '').split(/\s+/)];
@@ -235,7 +254,7 @@
   }
 
   function identify(button, choices, useIcon) {
-    if (button.matches(':disabled,[aria-disabled="true"]') || getComputedStyle(button).pointerEvents === 'none') return null;
+    if (button.matches(':disabled,[aria-disabled="true"],.ds-button--disabled,.ds-button--loading') || getComputedStyle(button).pointerEvents === 'none') return null;
     if (button.matches('a[href]') && new URL(button.href).origin !== location.origin) return null;
     const caption = displayedText(button, 80);
     if (caption === null) return null;
@@ -420,6 +439,34 @@
     return displayedText(cell, limit, key === 'masked');
   }
 
+  // The design-system table represents an empty directory with three rows. Two spacers
+  // are CSS-hidden and the visible text is itself aria-hidden. Match only this template.
+  function platformEmpty(rows, count) {
+    if (rows.length !== 3) return false;
+    let shown = 0;
+    for (const row of rows) {
+      const cell = row.firstElementChild;
+      if (row.children.length !== 1 || !cell.matches('td.ds-table-td--empty') || cell.colSpan !== count) return false;
+      const marker = cell.querySelector(':scope > span.ds-table-empty');
+      if (!marker || marker.querySelector('input,textarea,output,code,pre')) return false;
+      if (getComputedStyle(marker).visibility !== 'visible' || !marker.getClientRects().length) continue;
+      const label = "translate(translate(normalize-space(.),'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz'),' ','')";
+      const test = label + "='暂无apikey，你可以创建apikey' or " + label + "='noapikey,youcancreatenewapikey.'";
+      if (!document.evaluate(test, marker, null, XPathResult.BOOLEAN_TYPE, null).booleanValue) return false;
+      shown++;
+    }
+    return shown === 1;
+  }
+
+  function platformListRoot(table) {
+    if (!table.matches('.ds-table--embedded > table')) return null;
+    for (let root = table.parentElement; root && root !== document.body; root = root.parentElement) {
+      const buttons = controls(root, [table]);
+      if (buttons.create || buttons.usage) return root;
+    }
+    return null;
+  }
+
   function inspect(explicitList) {
     visibility = new WeakMap();
     paintCache = new WeakMap();
@@ -443,7 +490,8 @@
     if (extras.some(item => item.columns.join() !== 'actions' ||
         !item.table.closest('[class*="fixed" i],[class*="pinned" i],[class*="sticky" i]'))) return null;
     const parts = layouts.map(item => item.table);
-    const root = table.closest('main,[role="main"]') || document.body;
+    const platformRoot = platformListRoot(table);
+    const root = platformRoot || table.closest('main,[role="main"]') || document.body;
     let externalEmpty = null;
     if (!rows.length) {
       const siblings = [table, table.nextElementSibling];
@@ -456,7 +504,11 @@
     }
     const textRegions = new Set(layouts.flatMap(item => item.semantic ? [item.table] : [item.header, ...item.rows]));
     if (externalEmpty) textRegions.add(externalEmpty);
-    if (hasFloatingPanel(table, parts) || hasUnexpectedText(document.body, parts, explicitList === true, textRegions) ||
+    const verification = platformRoot && visibleAll(platformRoot, '.ds-alert--warning').find(el =>
+      /^(?:你还未完成实名认证，请认证后再创建 API Key|Please complete real-name verification to create API Key)$/i.test(
+        displayedText(el, 180, false, true) || ''));
+    if (verification) textRegions.add(verification);
+    if (hasFloatingPanel(table, parts) || hasUnexpectedText(platformRoot || document.body, parts, explicitList === true, textRegions) ||
         visibleAll(root, 'pre,code,samp,kbd').some(el => !parts.some(part => part.contains(el)))) return null;
     if (rows.length > 300 || covered(header, extras)) return null;
     const count = table.getAttribute('aria-rowcount');
@@ -464,8 +516,8 @@
     const announcedColumns = table.getAttribute('aria-colcount');
     if (announcedColumns !== null && Number(announcedColumns) !== columns.length) return null;
     const entries = [], targets = new Map();
-    let explicitEmpty = !!externalEmpty;
-    for (const row of rows) {
+    let explicitEmpty = !!externalEmpty || (!!platformRoot && platformEmpty(rows, columns.length));
+    for (const row of explicitEmpty ? [] : rows) {
       if (covered(row, extras)) return null;
       const cells = layout.cells(row);
       if (cells.length === 1 && rows.length === 1 &&
@@ -481,11 +533,21 @@
           (layout.semantic && cell.closest(rowSelector) !== row) ||
           Number(cell.getAttribute('colspan') || cell.getAttribute('aria-colspan') || 1) !== 1 ||
           Number(cell.getAttribute('rowspan') || cell.getAttribute('aria-rowspan') || 1) !== 1)) return null;
-      const name = cellText(cells, columns, 'name', 96);
-      const masked = cellText(cells, columns, 'masked', 128);
+      let name = cellText(cells, columns, 'name', 96);
+      const maskedCell = cells[columns.indexOf('masked')];
+      const managed = !!platformRoot && !!maskedCell && /^(?:DeepSeek Harness)\s*App-managed$/i.test(name || '') &&
+        document.evaluate("normalize-space(.)='由 Harness 管理' or normalize-space(.)='Managed by Harness'",
+          maskedCell, null, XPathResult.BOOLEAN_TYPE, null).booleanValue;
+      if (managed) name = 'DeepSeek Harness';
+      else if (platformRoot) {
+        const named = visibleAll(cells[columns.indexOf('name')], 'span[title]');
+        if (named.length === 1) name = displayedText(named[0], 96);
+      }
+      const masked = managed ? '' : cellText(cells, columns, 'masked', 128);
       const tracking = cellText(cells, columns, 'trackingId', 52);
       if (!name || masked === null || tracking === null) return null;
       const data = { name };
+      if (managed) data.managed = true;
       if (!isPlaceholder(masked)) {
         if (!maskedKey.test(masked) || /^[.…]+$/.test(masked)) return null;
         data.masked = masked;
@@ -494,7 +556,7 @@
         if (!validTracking(tracking)) return null;
         data.trackingId = tracking;
       }
-      if (!data.masked && !data.trackingId) return null;
+      if (!data.masked && !data.trackingId && !managed) return null;
       for (const key of ['created', 'lastUsed']) {
         const value = cellText(cells, columns, key, 64);
         if (value === null) return null;
@@ -514,13 +576,13 @@
           for (const key of Object.keys(rowActions)) buttons[key] = buttons[key] || external[key];
         }
       }
-      entries.push({ id, ...data, rename: !!buttons.rename, revoke: !!buttons.revoke });
+      entries.push({ id, ...data, rename: !managed && !!buttons.rename, revoke: !managed && !!buttons.revoke });
       targets.set(id, { row, buttons, data, actionRows });
     }
     if (!entries.length && !explicitEmpty) return null;
     const buttons = controls(root, parts);
     if (externalEmpty && !buttons.create) return null;
-    return { data: { rows: entries, create: !!buttons.create, usage: !!buttons.usage,
+    return { data: { rows: entries, create: !!buttons.create, verification: !!verification && !buttons.create, usage: !!buttons.usage,
       previous: !!buttons.previous, next: !!buttons.next }, buttons, targets };
   }
 
@@ -534,12 +596,17 @@
     return true;
   }
   let owner = null;
+  function releaseOwner() {
+    owner?.watch?.disconnect();
+    owner = null;
+  }
+  window.addEventListener('pagehide', releaseOwner);
   document.addEventListener('click', event => {
     if (owner && event.target instanceof Element && !owner.trigger.contains(event.target) &&
-        !event.target.closest('form,dialog,[role="dialog"],[role="alertdialog"],[aria-modal="true"]')) owner = null;
+        !event.target.closest('form,dialog,[role="dialog"],[role="alertdialog"],[aria-modal="true"]')) releaseOwner();
   }, true);
   function dispatch(command, explicitList) {
-    owner = null;
+    releaseOwner();
     try {
       if (typeof command !== 'string') return 'stale';
       const current = inspect(explicitList);
@@ -552,7 +619,7 @@
       }
       const match = command.match(/^(show|rename|revoke):(r[a-z\d]+)$/);
       const target = match && current.targets.get(match[2]);
-      if (!target) return 'stale';
+      if (!target || target.data.managed) return 'stale';
       const [ , action ] = match;
       const identifier = target.data.trackingId || target.data.masked;
       const duplicate = Array.from(current.targets.values()).some(other => other !== target &&
@@ -565,7 +632,8 @@
       const owns = (button.getAttribute('aria-owns') || '').split(/\s+/);
       const popover = button.getAttribute('popovertarget');
       const linked = new Set([...controls, ...owns, popover].filter(Boolean));
-      const opensDialog = button.getAttribute('aria-haspopup') === 'dialog' || [...linked].some(id =>
+      const officialOpener = platformIcon(button) === (action === 'rename' ? 'edit' : 'delete');
+      const opensDialog = officialOpener || button.getAttribute('aria-haspopup') === 'dialog' || [...linked].some(id =>
         document.getElementById(id)?.matches('dialog,[role="dialog"],[role="alertdialog"],[aria-modal="true"],form'));
       // A plain trash button may be an immediate deletion. Hand the focused button
       // to the user unless the official control declares that it opens a dialog.
@@ -584,10 +652,17 @@
       const uniqueName = !Array.from(current.targets.values()).some(item =>
         item !== target && item.data.name === target.data.name);
       owner = { action, data: target.data, row: target.row, trigger: button, linked, uniqueLinks,
-        uniqueName, since: performance.now() };
+        uniqueName, officialOpener, oldDialogs: officialOpener ? new Set(document.querySelectorAll('[role="dialog"]')) : null,
+        since: performance.now() };
+      if (officialOpener) {
+        owner.watch = new MutationObserver(releaseOwner);
+        for (const cell of target.row.cells) {
+          if (!cell.contains(button)) owner.watch.observe(cell, { childList: true, characterData: true, subtree: true });
+        }
+      }
       button.click();
       return 'form';
-    } catch { owner = null; return 'stale'; }
+    } catch { releaseOwner(); return 'stale'; }
   }
   function matchesFormOwner(command, name, identifier, dialog, requireUniqueOwner = false) {
     if (!inDirectory() || !owner || owner.action !== command || owner.data.name !== name ||
@@ -601,6 +676,15 @@
     const modals = visibleAll(document, modalSelector);
     const candidates = modals.length ? modals.filter(el => !modals.some(other => other !== el && other.contains(el))) : visibleAll(document, 'form');
     if (candidates.length !== 1 || candidates[0] !== dialog) return false;
+    if (owner.watch?.takeRecords().length) { releaseOwner(); return false; }
+    if (owner.officialOpener && owner.uniqueName && dialog.matches('.ds-modal-content[role="dialog"]') &&
+        owner.row.isConnected && owner.row.contains(owner.trigger) && !owner.oldDialogs.has(dialog)) {
+      // A public icon opens a fresh portal for its own row. Reusing any dialog or replacing
+      // the captured trigger invalidates this proof. Pin the portal for all later stages.
+      if (owner.portal && owner.portal !== dialog) return false;
+      owner.portal = dialog;
+      return true;
+    }
     if (owner.row.contains(dialog)) return true;
     if (requireUniqueOwner) return owner.uniqueName && !!dialog.id && owner.uniqueLinks.has(dialog.id);
     return !!dialog.id && owner.linked.has(dialog.id);

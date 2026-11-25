@@ -15,6 +15,8 @@ import android.net.http.SslError;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Message;
+import android.os.SystemClock;
+import android.view.MotionEvent;
 import android.view.View;
 import android.view.WindowInsets;
 import android.view.inputmethod.InputMethodManager;
@@ -40,8 +42,10 @@ import androidx.webkit.WebViewFeature;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
+import java.util.function.BooleanSupplier;
 
 import static io.tokenseek.app.PlatformNavigation.https;
 
@@ -68,6 +72,8 @@ public final class OfficialPlatformActivity extends Activity {
     private OfficialKeyDirectory keyDirectory;
     private String topUpAmount;
     private Button fillAmount;
+    private NativePaymentQr paymentQr;
+    private Button qrAction;
     private String mobileLayout;
     private String entryRoute;
     private String restartUrl;
@@ -75,6 +81,7 @@ public final class OfficialPlatformActivity extends Activity {
     private CookieManager cookies;
     private PlatformNavigation navigation;
     private boolean keyboardVisible;
+    private boolean paymentWindowOpen;
 
     static Intent createIntent(Context context, String address) {
         return createIntent(context, address, "default");
@@ -128,8 +135,19 @@ public final class OfficialPlatformActivity extends Activity {
                         openOfficialEntry(restartUrl);
                     }
                     @Override public void leaveDirectory() { back(); }
-                });
+                }, workspaceId);
         mobileLayout = LocalSite.bundledScript(this, R.raw.platform_mobile);
+        paymentQr = new NativePaymentQr(this, this::openAlipayQr);
+        qrAction = findViewById(R.id.platform_qr);
+        qrAction.setOnClickListener(v -> {
+            WebView current = visibleWindow();
+            if (current != null && canReadPaymentQr(current, current.getUrl())) {
+                String address = current.getUrl();
+                SiteClient site = (SiteClient) current.getWebViewClient();
+                long revision = site.revision;
+                paymentQr.open(current, () -> revision == site.revision && canReadPaymentQr(current, address));
+            }
+        });
         fillAmount = findViewById(R.id.platform_fill_amount);
         topUpAmount = PaymentHandoff.MERCHANT.equals(initial.toString())
                 ? NativeFunding.parseAmount(getIntent().getStringExtra(EXTRA_AMOUNT)).value : "";
@@ -214,7 +232,13 @@ public final class OfficialPlatformActivity extends Activity {
         settings.setSupportMultipleWindows(true);
         settings.setJavaScriptCanOpenWindowsAutomatically(false);
         cookies.setAcceptThirdPartyCookies(view, true);
-        view.setWebViewClient(new SiteClient());
+        SiteClient client = new SiteClient();
+        view.setWebViewClient(client);
+        view.setOnTouchListener((v, event) -> {
+            if (event.getActionMasked() == MotionEvent.ACTION_UP && view == visibleWindow()
+                    && PaymentHandoff.isCheckout(view.getUrl())) client.tappedCheckout();
+            return false;
+        });
         view.setWebChromeClient(new SiteChrome());
         windows.add(view);
         pages.addView(view, new FrameLayout.LayoutParams(-1, -1));
@@ -285,8 +309,16 @@ public final class OfficialPlatformActivity extends Activity {
         boolean root = current == null || windows.indexOf(current) == 0;
         boolean failed = current != null && ((SiteClient) current.getWebViewClient()).failed;
         keyDirectory.route(current, url, root, keyPage, failed, "api_keys".equals(entryRoute));
+        qrAction.setVisibility(canReadPaymentQr(current, url) ? View.VISIBLE : View.GONE);
         fillAmount.setVisibility(!topUpAmount.isEmpty() && PaymentHandoff.MERCHANT.equals(url)
                 && currentTopUp(current) ? View.VISIBLE : View.GONE);
+    }
+
+    private boolean canReadPaymentQr(WebView view, String address) {
+        if (view == null || view != visibleWindow() || keyDirectory.nativeVisible()
+                || !NativePaymentQr.supports(address) || !address.equals(view.getUrl())) return false;
+        SiteClient site = (SiteClient) view.getWebViewClient();
+        return !site.failed && address.equals(site.rendered);
     }
 
     private boolean currentTopUp(WebView view) {
@@ -404,6 +436,22 @@ public final class OfficialPlatformActivity extends Activity {
         private final PlatformNavigation.Document document = new PlatformNavigation.Document();
         private PaymentHandoff.Provider unavailableWallet;
         private boolean unavailableAlipayAppLink;
+        private long checkoutTap = -1;
+        private String wechatH5Navigation;
+        private String launchedLink;
+        private long paymentEpoch;
+        private String awaitingHistory;
+        private WebView initialPaymentOpener;
+
+        void tappedCheckout() {
+            checkoutTap = SystemClock.uptimeMillis();
+            paymentEpoch++;
+            launchedLink = null;
+        }
+
+        boolean recentCheckoutTap() {
+            return checkoutTap >= 0 && SystemClock.uptimeMillis() - checkoutTap <= 15000;
+        }
 
         @Override public WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest request) {
             if (request.isForMainFrame()) {
@@ -428,6 +476,7 @@ public final class OfficialPlatformActivity extends Activity {
                     if (isFinishing() || isDestroyed() || requestId != revision || failed
                             || view != visibleWindow() || !address.equals(view.getUrl())) return;
                     rendered = address;
+                    view.getSettings().setJavaScriptCanOpenWindowsAutomatically(PaymentHandoff.isCheckout(address));
                     if (windows.indexOf(view) == 0) {
                         int index = view.copyBackForwardList().getCurrentIndex();
                         String resume = navigation.onVisibleRoot(address, document.isOfficialGet(address), index);
@@ -451,8 +500,18 @@ public final class OfficialPlatformActivity extends Activity {
 
         @Override public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
             Uri target = request.getUrl();
-            if (request.isForMainFrame() && view == visibleWindow() && "GET".equals(request.getMethod())
-                    && offerPaymentApp(view, target)) return true;
+            if (view == visibleWindow() && "GET".equals(request.getMethod())) {
+                if (request.isForMainFrame() && !request.isRedirect()) {
+                    String address = target.toString();
+                    String referer = PaymentHandoff.wechatMerchantReferer(paymentSourceWindow(view).getUrl(), address);
+                    if (referer != null && !address.equals(wechatH5Navigation)) {
+                        wechatH5Navigation = address;
+                        view.loadUrl(address, Collections.singletonMap("Referer", referer));
+                        return true;
+                    }
+                }
+                if (offerPaymentApp(view, request)) return true;
+            }
             if (https(target.toString()) != null) return false;
             if ("about:blank".equals(target.toString())) {
                 return request.isForMainFrame() && windows.indexOf(view) <= 0;
@@ -465,7 +524,20 @@ public final class OfficialPlatformActivity extends Activity {
         }
 
         @Override public void onPageStarted(WebView view, String url, Bitmap favicon) {
+            if (view == visibleWindow()) paymentQr.cancel();
+            // An initial empty popup belongs to its opener until its first real document.
+            boolean initialBlank = "about:blank".equals(url) && initialPaymentOpener != null;
+            if (!initialBlank) {
+                initialPaymentOpener = null;
+                paymentEpoch++;
+            }
+            awaitingHistory = url;
+            boolean checkout = PaymentHandoff.isCheckout(url);
+            view.getSettings().setJavaScriptCanOpenWindowsAutomatically(checkout);
+            if (!checkout) checkoutTap = -1;
+            if (!PaymentHandoff.isWechatH5(url)) wechatH5Navigation = null;
             if (isPlatformUrl(Uri.parse(url))) {
+                launchedLink = null;
                 unavailableWallet = null;
                 unavailableAlipayAppLink = false;
             }
@@ -474,7 +546,7 @@ public final class OfficialPlatformActivity extends Activity {
             finished = false;
             failed = false;
             if (view == visibleWindow()) {
-                hideNotice();
+                if (!initialBlank) hideNotice();
                 showPage(url);
             }
         }
@@ -485,20 +557,27 @@ public final class OfficialPlatformActivity extends Activity {
             URI location = https(url);
             if (location != null && "accounts.google.com".equalsIgnoreCase(location.getHost())) {
                 offerLoginBrowser();
-            } else if (PaymentHandoff.isWechatH5(url) && notice.getVisibility() != View.VISIBLE) {
-                // WeChat documents H5 as a mobile-browser product. Open a fresh merchant page
-                // on explicit request so the browser can supply its own login session and Referer.
-                offerPaymentBrowser();
+            } else if (PaymentHandoff.isWechatH5(url)) {
+                // Give H5 time to issue its wallet navigation. Offer a browser only if this
+                // document stays on screen and no actionable wallet prompt has appeared.
+                view.postDelayed(() -> {
+                    if (view == visibleWindow() && url.equals(view.getUrl()) && !isDestroyed() && !isFinishing()
+                            && !paymentWindowOpen && launchedLink == null && notice.getVisibility() != View.VISIBLE)
+                        offerPaymentBrowser();
+                }, 3500);
             }
         }
 
         @Override public void onPageFinished(WebView view, String url) {
             if (failed || !document.finishedAt(url, view.getUrl())) return;
+            awaitingHistory = null;
             finished = true;
             afterRender(view, view.getUrl());
         }
 
         @Override public void doUpdateVisitedHistory(WebView view, String url, boolean reload) {
+            if (!"about:blank".equals(url) && !url.equals(awaitingHistory)) paymentEpoch++;
+            awaitingHistory = null;
             int index = view.copyBackForwardList().getCurrentIndex();
             if (windows.indexOf(view) == 0) {
                 if (index < lastHistoryIndex) navigation.cancelContinuation();
@@ -553,15 +632,19 @@ public final class OfficialPlatformActivity extends Activity {
 
         @Override public boolean onCreateWindow(WebView opener, boolean dialog, boolean userGesture, Message result) {
             if (opener != visibleWindow()) return false;
-            if (!userGesture || windows.size() >= 4) {
+            SiteClient owner = (SiteClient) opener.getWebViewClient();
+            boolean fromCheckoutTap = PaymentHandoff.isCheckout(opener.getUrl()) && owner.recentCheckoutTap();
+            if ((!userGesture && !fromCheckoutTap) || windows.size() >= 4) {
                 if (PaymentHandoff.canOpenPaymentBrowser(opener.getUrl())) offerPaymentBrowser();
                 return false;
             }
+            owner.checkoutTap = -1;
             // Give Chromium a real secondary WebView: window.opener, target=_blank form POSTs,
             // and window.close() retain their normal browser semantics.
             hideNotice();
             WebView popup = createWindow();
             if (popup == null) return false;
+            ((SiteClient) popup.getWebViewClient()).initialPaymentOpener = opener;
             showPage(null);
             ((WebView.WebViewTransport) result.obj).setWebView(popup);
             result.sendToTarget();
@@ -580,10 +663,17 @@ public final class OfficialPlatformActivity extends Activity {
         return host.equals(domain) || host.endsWith("." + domain);
     }
 
-    private boolean offerPaymentApp(WebView view, Uri requested) {
+    private WebView paymentSourceWindow(WebView view) {
         String source = view.getUrl();
-        int index = windows.indexOf(view);
-        if ((source == null || "about:blank".equals(source)) && index > 0) source = windows.get(index - 1).getUrl();
+        WebView opener = ((SiteClient) view.getWebViewClient()).initialPaymentOpener;
+        if ((source == null || "about:blank".equals(source)) && opener != null && windows.contains(opener)) return opener;
+        return view;
+    }
+
+    private boolean offerPaymentApp(WebView view, WebResourceRequest request) {
+        Uri requested = request.getUrl();
+        WebView owner = paymentSourceWindow(view);
+        String source = owner.getUrl();
         String data = requested.toString();
         String declaredPackage = null;
         String fallback = null;
@@ -600,43 +690,117 @@ public final class OfficialPlatformActivity extends Activity {
         PaymentHandoff handoff = PaymentHandoff.from(source, data, declaredPackage, fallback);
         if (handoff == null) return false;
         SiteClient client = (SiteClient) view.getWebViewClient();
+        if (client.failed) return false;
         if (handoff.isHttpsAppLink() && client.unavailableAlipayAppLink) return false;
         if (client.unavailableWallet == handoff.provider) {
-            // A cashier can issue its app link again after opening a web fallback. Keep HTTPS
-            // navigation intact and never present the same unavailable wallet in a loop.
             if (https(requested.toString()) != null) return false;
-            offerPaymentBrowser();
+            if (request.isForMainFrame()) offerPaymentBrowser();
             return true;
         }
+        String frameCheck = null;
+        if (!request.isForMainFrame()) {
+            // WebResourceRequest doesn't identify the sending frame. The checkout document
+            // must itself embed the exact wallet URL, both now and when the user approves.
+            if (https(requested.toString()) != null) return false;
+            if (!PaymentHandoff.isCheckout(source) || owner != view) return true;
+            frameCheck = "(() => {if (window !== top || location.href !== "
+                    + org.json.JSONObject.quote(source) + ") return false; const url = "
+                    + org.json.JSONObject.quote(requested.toString()) + "; return Array.from(document.querySelectorAll('iframe,frame'))"
+                    + ".some(frame => frame.src === url);})()";
+        }
+        SiteClient ownerClient = (SiteClient) owner.getWebViewClient();
+        long ticket = ++client.paymentEpoch;
+        long ownerEpoch = ownerClient.paymentEpoch;
+        BooleanSupplier current = () -> view == visibleWindow() && !isFinishing() && !isDestroyed()
+                && !client.failed && client.paymentEpoch == ticket && ownerClient.paymentEpoch == ownerEpoch
+                && owner == paymentSourceWindow(view) && source.equals(owner.getUrl());
+        String frame = frameCheck;
+        boolean direct = request.isForMainFrame() && request.hasGesture() && client.recentCheckoutTap();
+        whenWalletCurrent(view, current, frame, false, () -> presentWallet(view, client, handoff, direct, current, frame));
+        return true;
+    }
+
+    private void whenWalletCurrent(WebView view, BooleanSupplier current, String frameCheck, boolean approved, Runnable action) {
+        if (!current.getAsBoolean()) {
+            if (approved) staleWallet(view);
+            return;
+        }
+        if (frameCheck == null) {
+            action.run();
+            return;
+        }
+        view.evaluateJavascript(frameCheck, result -> {
+            if ("true".equals(result) && current.getAsBoolean()) action.run();
+            else if (approved) staleWallet(view);
+        });
+    }
+
+    private void staleWallet(WebView view) {
+        if (view == visibleWindow() && !isFinishing() && !isDestroyed()
+                && !paymentWindowOpen && PaymentHandoff.isCheckout(paymentSourceWindow(view).getUrl())
+                && notice.getVisibility() != View.VISIBLE)
+            showNotice(getString(R.string.platform_wallet_changed), "", null);
+    }
+
+    private void presentWallet(WebView view, SiteClient client, PaymentHandoff handoff, boolean userTap,
+                               BooleanSupplier current, String frameCheck) {
+        if (paymentWindowOpen || handoff.appUrl.equals(client.launchedLink)) return;
         String name = getString(handoff.provider == PaymentHandoff.Provider.ALIPAY
                 ? R.string.platform_alipay : R.string.platform_wechat);
-        showNotice(getString(R.string.platform_payment_app, name), getString(R.string.platform_open_payment, name), () -> {
-            // Fresh, package-pinned intent. No component, selector, flags, or other web-supplied
-            // extras are relayed to the external app.
-            Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(handoff.appUrl))
-                    .setPackage(handoff.provider.packageName).addCategory(Intent.CATEGORY_BROWSABLE);
-            if (!startPaymentWindow(intent)) {
-                // An installed wallet may support its custom scheme but not verified App Links.
-                // Let the original HTTPS page continue, including a later scheme launch.
-                if (handoff.isHttpsAppLink()) client.unavailableAlipayAppLink = true;
-                else client.unavailableWallet = handoff.provider;
-                // WeChat's H5 entry must be reached from its registered merchant and can be
-                // short lived. A native loadUrl cannot reproduce that browser navigation.
-                if (handoff.provider == PaymentHandoff.Provider.ALIPAY && PaymentHandoff.isAlipayCashier(view.getUrl())
-                        && (handoff.fallback == null || handoff.fallback.equals(view.getUrl()))) {
-                    // This cashier may be the response to a POST. Keep the open document in
-                    // place, including any payment methods it offers, rather than replaying it.
-                    showNotice(getString(R.string.platform_alipay_stay), getString(R.string.platform_back_to_cashier),
-                            () -> view.requestFocus());
-                } else if (handoff.fallback == null || PaymentHandoff.isWechatH5(handoff.fallback)) {
-                    offerPaymentBrowser();
-                } else {
-                    showNotice(getString(R.string.platform_wallet_missing, name),
-                            getString(R.string.platform_web_cashier), () -> view.loadUrl(handoff.fallback));
-                }
+        Runnable launch = () -> {
+            if (paymentWindowOpen || handoff.appUrl.equals(client.launchedLink)) return;
+            if (launchWallet(handoff)) {
+                client.launchedLink = handoff.appUrl;
+                client.checkoutTap = -1;
+                return;
             }
-        });
-        return true;
+            // If the wallet has no HTTPS handler, keep its web checkout available. A later
+            // custom-scheme request from that page can still work on this installation.
+            if (handoff.isHttpsAppLink()) client.unavailableAlipayAppLink = true;
+            else client.unavailableWallet = handoff.provider;
+            if (handoff.provider == PaymentHandoff.Provider.ALIPAY && PaymentHandoff.isAlipayCashier(view.getUrl())
+                    && (handoff.fallback == null || handoff.fallback.equals(view.getUrl()))) {
+                showNotice(getString(R.string.platform_alipay_stay), getString(R.string.platform_back_to_cashier),
+                        () -> view.requestFocus());
+            } else if (handoff.fallback == null || PaymentHandoff.isWechatH5(handoff.fallback)) {
+                offerPaymentBrowser();
+            } else {
+                showNotice(getString(R.string.platform_wallet_missing, name),
+                        getString(R.string.platform_web_cashier),
+                        () -> { if (current.getAsBoolean()) view.loadUrl(handoff.fallback); });
+            }
+        };
+        if (userTap) launch.run();
+        else showNotice(getString(R.string.platform_payment_app, name), getString(R.string.platform_open_payment, name),
+                () -> whenWalletCurrent(view, current, frameCheck, true, launch));
+    }
+
+    boolean openAlipayQr(String url) {
+        WebView view = visibleWindow();
+        if (view == null || !PaymentHandoff.isAlipayQr(url)) return false;
+        SiteClient client = (SiteClient) view.getWebViewClient();
+        if (client.failed || !PaymentHandoff.isCheckout(view.getUrl())) return false;
+        PaymentHandoff handoff = PaymentHandoff.from(view.getUrl(), url, null, null);
+        return handoff != null && launchWallet(handoff);
+    }
+
+    private boolean launchWallet(PaymentHandoff handoff) {
+        // Construct a fresh, package-pinned intent. No extras or components supplied by the page travel with it.
+        if (paymentWindowOpen) return false;
+        if (PaymentHandoff.isAlipayQr(handoff.appUrl)) {
+            // Alipay's documented H5 container opens the merchant-issued QR URL inside the
+            // wallet even on installations that don't register for HTTPS App Links.
+            Uri browser = Uri.parse("alipays://platformapi/startapp").buildUpon()
+                    .appendQueryParameter("appId", "20000067")
+                    .appendQueryParameter("url", handoff.appUrl).build();
+            if (startPaymentWindow(walletIntent(handoff.provider, browser))) return true;
+        }
+        return startPaymentWindow(walletIntent(handoff.provider, Uri.parse(handoff.appUrl)));
+    }
+
+    private Intent walletIntent(PaymentHandoff.Provider provider, Uri address) {
+        return new Intent(Intent.ACTION_VIEW, address).setPackage(provider.packageName)
+                .addCategory(Intent.CATEGORY_BROWSABLE);
     }
 
     private void offerLoginBrowser() {
@@ -657,8 +821,10 @@ public final class OfficialPlatformActivity extends Activity {
     }
 
     private boolean startPaymentWindow(Intent intent) {
+        if (paymentWindowOpen) return false;
         try {
             startActivityForResult(intent, PAYMENT_WINDOW);
+            paymentWindowOpen = true;
             return true;
         } catch (ActivityNotFoundException | SecurityException unavailable) {
             return false;
@@ -668,6 +834,7 @@ public final class OfficialPlatformActivity extends Activity {
     @Override protected void onActivityResult(int request, int result, Intent data) {
         super.onActivityResult(request, result, data);
         if (request == PAYMENT_WINDOW && !isFinishing()) {
+            paymentWindowOpen = false;
             // A wallet can return for success, cancellation or failure. DeepSeek owns the order.
             showNotice(getString(R.string.platform_payment_return), getString(R.string.platform_check_transactions), () -> {
                 restartUrl = PlatformNavigation.BASE + PlatformNavigation.TRANSACTIONS;
@@ -740,13 +907,18 @@ public final class OfficialPlatformActivity extends Activity {
     }
 
     @Override protected void onPause() {
+        if (paymentQr != null) paymentQr.cancel();
         if (keyDirectory != null) keyDirectory.setPaused(true);
-        for (WebView view : windows) view.onPause();
+        for (WebView view : windows) {
+            ((SiteClient) view.getWebViewClient()).paymentEpoch++;
+            view.onPause();
+        }
         if (cookies != null) cookies.flush();
         super.onPause();
     }
 
     @Override protected void onDestroy() {
+        if (paymentQr != null) paymentQr.destroy();
         if (keyDirectory != null) keyDirectory.destroy();
         while (!windows.isEmpty()) removeWindow(visibleWindow());
         super.onDestroy();

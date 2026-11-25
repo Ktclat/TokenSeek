@@ -10,6 +10,7 @@ import { Button } from '../base/Button.js'
 import { Wallet } from './Wallet.js'
 import { ProfileSettings, useProfileText } from './ProfileSettings.js'
 import { AccountKey } from './AccountKey.js'
+import { NativeChatKeyPage } from './NativeChatKeyPage.js'
 import { backSettings, closeSettings, pushSettings, type SettingsSection } from './settingsDialogState.js'
 import { PreferencePanels, usePreferenceLabels } from './PreferencePanels.js'
 import { SettingsRow, Options } from './SettingsRows.js'
@@ -78,6 +79,10 @@ export const SettingsPages = ({ page, backDisabled, children }: {
       window.removeEventListener('keydown', onBack, true)
     }
   }, [backDisabled])
+
+  if (page === 'keys' && window.tokenSeekShowChatKeys) {
+    return createPortal(<NativeChatKeyPage present={window.tokenSeekShowChatKeys} />, document.body)
+  }
 
   const renderPage = () => {
     switch (page) {

@@ -38,6 +38,11 @@
       })
     });
   }
+  if (typeof host.showChatKeys === 'function') {
+    Object.defineProperty(window, 'tokenSeekShowChatKeys', {
+      value: screen => host.showChatKeys(token, screen)
+    });
+  }
   if (typeof host.showFunding === 'function') {
     Object.defineProperty(window, 'TokenSeekFunding', {
       value: Object.freeze({

@@ -1,0 +1,35 @@
+<resources>
+    <string name="chat_keys_title">聊天使用的密钥</string>
+    <string name="chat_keys_official">创建或管理官方密钥</string>
+    <string name="chat_keys_official_hint">查看 DeepSeek 开放平台账户的全部密钥</string>
+    <string name="chat_keys_account">本机账户 · %1$s</string>
+    <string name="chat_keys_empty">尚未绑定聊天密钥</string>
+    <string name="chat_keys_add">添加已有 API Key</string>
+    <string name="chat_keys_return">返回对话</string>
+    <string name="chat_keys_active">使用中</string>
+    <string name="chat_keys_manage">本机设置</string>
+    <string name="chat_keys_name">本机备注（可选）</string>
+    <string name="chat_keys_value">官方 API Key</string>
+    <string name="chat_keys_paste">粘贴完整的 API Key</string>
+    <string name="chat_keys_verify">验证并选用</string>
+    <string name="chat_keys_verifying">正在验证密钥…</string>
+    <string name="chat_keys_reading">正在读取本机密钥…</string>
+    <string name="chat_keys_storage">无法读取或保存本机密钥，请重试。</string>
+    <string name="chat_keys_invalid">此密钥未通过 DeepSeek 验证，请核对完整的 API Key。</string>
+    <string name="chat_keys_network">暂时无法连接 DeepSeek 验证密钥，请重试。</string>
+    <string name="chat_keys_limited">DeepSeek 暂时无法验证密钥，请稍后重试。</string>
+    <string name="chat_keys_retry">重试</string>
+    <string name="chat_keys_rename">保存备注</string>
+    <string name="chat_keys_use">选用此密钥</string>
+    <string name="chat_keys_clear">取消选用</string>
+    <string name="chat_keys_remove">从本机移除</string>
+    <string name="chat_keys_remove_question">从本机移除「%1$s」？</string>
+    <string name="chat_keys_remove_hint">DeepSeek 开放平台上的这把密钥仍可使用。</string>
+    <string name="chat_keys_remove_confirm">确认移除</string>
+    <string name="chat_keys_other">其他本机账户</string>
+    <string name="chat_keys_switch">切换至此账户</string>
+    <string name="chat_keys_default">API Key</string>
+    <string name="chat_keys_back">返回</string>
+    <string name="chat_keys_cancel">取消</string>
+    <string name="chat_keys_changed">密钥列表已更新，请核对后再操作。</string>
+</resources>

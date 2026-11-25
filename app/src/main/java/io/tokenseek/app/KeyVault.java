@@ -162,12 +162,18 @@ final class KeyVault {
     }
 
     String manageProfile(String profile, String action, String id, String name, String secret) {
+        return manageProfile(profile, action, id, name, secret, null);
+    }
+
+    String manageProfile(String profile, String action, String id, String name, String secret, String expectedList) {
         boolean original = "default".equals(profile);
         if (!original && (profile == null || !profile.matches("[a-f0-9]{8}(-[a-f0-9]{4}){3}-[a-f0-9]{12}"))) return "";
         String ringName = original ? RING : RING + "." + profile;
         synchronized (LOCK) {
             try {
                 JSONObject state = load(ringName, original);
+                // The native editor can remain open while a different key is bound on the platform screen.
+                if (expectedList != null && !snapshot(state, false).toString().equals(expectedList)) return "";
                 boolean listing = "list".equals(action);
                 if (listing || "read".equals(action)) {
                     // If an upgrade cannot be committed, the old encrypted key still works.

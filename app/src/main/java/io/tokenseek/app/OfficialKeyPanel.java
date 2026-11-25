@@ -127,7 +127,11 @@ final class OfficialKeyPanel extends LinearLayout {
     void awaitingConfirmation() {
         LinearLayout card = stateCard(R.string.key_panel_pending_title, R.string.key_panel_pending_detail);
         addPrimary(card, R.string.key_panel_official, "official");
-        card.addView(button(R.string.key_panel_retry, false, () -> listener.action("retry")), FILL, WRAP);
+    }
+
+    void reviewOnPlatform() {
+        LinearLayout card = stateCard(R.string.key_panel_review, R.string.key_panel_review_detail);
+        addPrimary(card, R.string.key_panel_official, "official");
     }
 
     private LinearLayout stateCard(int heading, int explanation) {
@@ -161,6 +165,10 @@ final class OfficialKeyPanel extends LinearLayout {
             card.addView(count, FILL, WRAP);
         }
         if (snapshot.getBoolean("create")) addPrimary(card, R.string.key_panel_create, "create");
+        else if (snapshot.optBoolean("verification")) {
+            addDetail(card, str(R.string.key_panel_verify_detail), false);
+            addPrimary(card, R.string.key_panel_verify, "official");
+        }
         for (int i = 0; i < rows.length(); i++) {
             if (i > 0) addLine(card);
             addRow(card, rows.getJSONObject(i), ids);
@@ -201,8 +209,9 @@ final class OfficialKeyPanel extends LinearLayout {
         String masked = field(row, "masked", 128);
         String created = field(row, "created", 80);
         String used = field(row, "lastUsed", 80);
+        boolean managed = row.optBoolean("managed") && "DeepSeek Harness".equals(name);
         if (name.trim().isEmpty() || !ROW_ID.matcher(id).matches() || id.startsWith("sk-") || !ids.add(id)
-                || (tracking.isEmpty() && masked.isEmpty())
+                || (tracking.isEmpty() && masked.isEmpty() && !managed)
                 || (!tracking.isEmpty() && !validTrackingId(tracking))
                 || (!masked.isEmpty() && (!MASK.matcher(masked).matches() || masked.matches("[.…]+")))) {
             throw new JSONException("Invalid key display metadata");
@@ -221,10 +230,13 @@ final class OfficialKeyPanel extends LinearLayout {
         title.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
         heading(title);
         lead.addView(title, new LayoutParams(0, WRAP, 1));
-        Button more = button(R.string.key_panel_more, false, null);
-        more.setContentDescription(getContext().getString(R.string.key_panel_manage, name));
-        more.setOnClickListener(v -> showMenu(more, id, name, rename, revoke));
-        lead.addView(more, WRAP, WRAP);
+        if (managed) addDetail(item, str(R.string.key_panel_harness), false);
+        else {
+            Button more = button(R.string.key_panel_more, false, null);
+            more.setContentDescription(getContext().getString(R.string.key_panel_manage, name));
+            more.setOnClickListener(v -> showMenu(more, id, name, rename, revoke));
+            lead.addView(more, WRAP, WRAP);
+        }
         if (!masked.isEmpty()) addDetail(item, masked, true);
         if (!tracking.isEmpty()) addDetail(item, getContext().getString(R.string.key_panel_tracking, tracking), true);
         if (!created.isEmpty()) addDetail(item, getContext().getString(R.string.key_view_created, created), false);

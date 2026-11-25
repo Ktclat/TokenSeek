@@ -1,0 +1,13 @@
+<resources>
+    <string name="payment_qr_action">Open Alipay or WeChat</string>
+    <string name="payment_qr_missing">Choose a payment method at checkout and bring one complete payment QR code into view, then try again.</string>
+    <string name="payment_qr_wechat_in_app">This checkout asks you to continue inside WeChat. Copy the official top-up link, open WeChat and send it to File Transfer. Open the link there, check your account and choose an amount.</string>
+    <string name="payment_qr_wechat">WeChat payment QR code</string>
+    <string name="payment_qr_alipay">Alipay payment QR code</string>
+    <string name="payment_qr_wechat_scan">Scan with WeChat on another device and check the recipient and amount. To use this phone, open the official top-up page inside WeChat. The original order stays here. Check your paid orders before starting another top-up.</string>
+    <string name="payment_qr_alipay_scan">Scan this code with Alipay on another device. Check the recipient and amount in Alipay before paying.</string>
+    <string name="payment_qr_return">Back to checkout</string>
+    <string name="payment_qr_wechat_open">Copy top-up link and open WeChat</string>
+    <string name="payment_qr_merchant">DeepSeek top-up</string>
+    <string name="payment_qr_wechat_unavailable">Top-up link copied. You can open it inside WeChat.</string>
+</resources>

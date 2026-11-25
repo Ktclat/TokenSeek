@@ -37,6 +37,7 @@
     <string name="platform_alipay_stay">未能唤起支付宝。可在当前收银台查看其他支付方式，或用右上角的浏览器入口。</string>
     <string name="platform_back_to_cashier">返回收银台</string>
     <string name="platform_payment_app">此支付页面请求打开%1$s。</string>
+    <string name="platform_wallet_changed">付款页面已更新。请在当前收银台重新打开钱包。</string>
     <string name="platform_open_payment">打开%1$s</string>
     <string name="platform_alipay">支付宝</string>
     <string name="platform_wechat">微信</string>

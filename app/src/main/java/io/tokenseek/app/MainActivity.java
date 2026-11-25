@@ -49,6 +49,7 @@ public final class MainActivity extends Activity {
     private WebView web;
     private NativeSettings nativeSettings;
     private NativeFunding nativeFunding;
+    private NativeChatKeys nativeChatKeys;
     private int systemTextZoom;
     private boolean drawerGestureEnabled;
     private FrameLayout container;
@@ -121,6 +122,12 @@ public final class MainActivity extends Activity {
         state.putString("pendingPlatformPage", pendingPlatformPage);
     }
 
+    void onLocalPageStarted() {
+        localPageReady = false;
+        currentWorkspace = null;
+        dismissChatKeys();
+    }
+
     void onLocalPageReady() {
         localPageReady = true;
         deliverPlatformReturn();
@@ -163,6 +170,7 @@ public final class MainActivity extends Activity {
         super.onResume();
         if (web == null) return;
         web.onResume();
+        if (nativeChatKeys != null) nativeChatKeys.refresh();
         web.evaluateJavascript("window.dispatchEvent(new Event('tokenseek:resume'))", null);
     }
 
@@ -317,6 +325,10 @@ public final class MainActivity extends Activity {
     }
 
     private void handleBack() {
+        if (nativeChatKeys != null) {
+            nativeChatKeys.back();
+            return;
+        }
         if (nativeFunding != null) {
             nativeFunding.back();
             return;
@@ -335,6 +347,7 @@ public final class MainActivity extends Activity {
     @Override protected void onDestroy() {
         if (filesCallback != null) filesCallback.onReceiveValue(null);
         if (audioRequest != null) audioRequest.deny();
+        dismissChatKeys();
         export.close();
         web.removeJavascriptInterface("TokenSeekHost");
         web.stopLoading();
@@ -345,7 +358,7 @@ public final class MainActivity extends Activity {
 
     private void updateDrawerEdge() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q || web == null) return;
-        if (!drawerGestureEnabled || nativeSettings != null || nativeFunding != null || web.getHeight() == 0) {
+        if (!drawerGestureEnabled || nativeSettings != null || nativeFunding != null || nativeChatKeys != null || web.getHeight() == 0) {
             web.setSystemGestureExclusionRects(Collections.emptyList());
             return;
         }
@@ -373,6 +386,7 @@ public final class MainActivity extends Activity {
             if (!(page.equals("home") || page.equals("theme") || page.equals("font")
                     || page.equals("personalization") || page.equals("account"))) return;
             if (nativeSettings == null) {
+                dismissChatKeys();
                 presentFunding("");
                 nativeSettings = new NativeSettings(this, (source, id) -> {
                     String detail = "{page:" + JSONObject.quote(source) + ",id:" + JSONObject.quote(id) + "}";
@@ -390,7 +404,7 @@ public final class MainActivity extends Activity {
 
     private void syncNativePanels() {
         updateDrawerEdge();
-        boolean covered = nativeSettings != null || nativeFunding != null;
+        boolean covered = nativeSettings != null || nativeFunding != null || nativeChatKeys != null;
         web.setImportantForAccessibility(covered ? View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS
                 : View.IMPORTANT_FOR_ACCESSIBILITY_AUTO);
     }
@@ -409,6 +423,7 @@ public final class MainActivity extends Activity {
             JSONObject screen = new JSONObject(data);
             if (!"wallet".equals(screen.optString("page"))) return;
             if (nativeFunding == null) {
+                dismissChatKeys();
                 presentSettings("");
                 nativeFunding = new NativeFunding(this, (id, amount) -> {
                     String detail = "{id:" + JSONObject.quote(id) + ",amount:" + JSONObject.quote(amount) + "}";
@@ -424,10 +439,48 @@ public final class MainActivity extends Activity {
         }
     }
 
+    private void dismissChatKeys() {
+        if (nativeChatKeys == null) return;
+        nativeChatKeys.close();
+        container.removeView(nativeChatKeys);
+        nativeChatKeys = null;
+        syncNativePanels();
+    }
+
+    private void presentChatKeys(String json) {
+        if (isFinishing() || isDestroyed()) return;
+        if (json.isEmpty()) {
+            dismissChatKeys();
+            return;
+        }
+        try {
+            JSONObject screen = new JSONObject(json);
+            String profile = screen.optString("profile");
+            if (!"keys".equals(screen.optString("page")) || !profile.equals(currentWorkspace)) return;
+            if (nativeChatKeys == null) {
+                presentSettings("");
+                presentFunding("");
+                nativeChatKeys = new NativeChatKeys(this, vault, (action, argument) -> {
+                    if (nativeChatKeys == null || !profile.equals(currentWorkspace)) return;
+                    String detail = "{id:" + JSONObject.quote(action) + ",argument:" + JSONObject.quote(argument) + "}";
+                    web.evaluateJavascript("window.dispatchEvent(new CustomEvent('tokenseek:chat-key-action',{detail:"
+                            + detail + "}))", null);
+                });
+                container.addView(nativeChatKeys, new FrameLayout.LayoutParams(-1, -1));
+                syncNativePanels();
+                nativeChatKeys.requestFocus();
+            }
+            nativeChatKeys.render(screen);
+        } catch (org.json.JSONException invalidScreen) {
+            dismissChatKeys();
+        }
+    }
+
     private final class Bridge {
         @JavascriptInterface public void setWorkspace(String token, String id) {
             if (!capability.equals(token) || !OfficialPlatformActivity.isValidWorkspaceId(id)) return;
             runOnUiThread(() -> {
+                if (!id.equals(currentWorkspace)) dismissChatKeys();
                 currentWorkspace = id;
                 deliverPlatformReturn();
             });
@@ -445,6 +498,10 @@ public final class MainActivity extends Activity {
         @JavascriptInterface public void showFunding(String token, String json) {
             if (capability.equals(token) && json != null && json.length() <= 16384)
                 runOnUiThread(() -> presentFunding(json));
+        }
+        @JavascriptInterface public void showChatKeys(String token, String json) {
+            if (capability.equals(token) && json != null && json.length() <= 131072)
+                runOnUiThread(() -> presentChatKeys(json));
         }
         @JavascriptInterface public void openFunding(String token, String amount) {
             if (!capability.equals(token) || amount == null) return;

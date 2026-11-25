@@ -22,4 +22,9 @@
     <string name="key_panel_pending_title">Awaiting confirmation</string>
     <string name="key_panel_pending_detail">Preparing the next step.</string>
     <string name="key_panel_official">Open DeepSeek Platform</string>
+    <string name="key_panel_harness">Managed by DeepSeek Harness</string>
+    <string name="key_panel_review">Review this action on DeepSeek</string>
+    <string name="key_panel_review_detail">Open the current platform form to see its details and result.</string>
+    <string name="key_panel_verify">Open identity verification</string>
+    <string name="key_panel_verify_detail">DeepSeek requires identity verification before this account can create API keys.</string>
 </resources>

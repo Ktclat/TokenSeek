@@ -33,6 +33,11 @@ final class PaymentHandoff {
     static PaymentHandoff from(String sourceUrl, String destination, String declaredPackage, String browserFallback) {
         URI target = parse(destination);
         if (target == null) return null;
+        if (isAlipayQr(destination)) {
+            if ((declaredPackage != null && !Provider.ALIPAY.packageName.equals(declaredPackage))
+                    || !allowsSource(sourceUrl, Provider.ALIPAY)) return null;
+            return new PaymentHandoff(Provider.ALIPAY, destination, destination);
+        }
         String originalWebLink = null;
         if (isAlipayWrapper(target)) {
             originalWebLink = destination;
@@ -48,7 +53,7 @@ final class PaymentHandoff {
         if (target == null || target.getRawQuery() == null || target.getRawQuery().isEmpty()) return null;
 
         Provider provider;
-        if ("alipays".equalsIgnoreCase(target.getScheme())
+        if (("alipays".equalsIgnoreCase(target.getScheme()) || "alipay".equalsIgnoreCase(target.getScheme()))
                 && "platformapi".equalsIgnoreCase(target.getRawAuthority())
                 && "/startapp".equalsIgnoreCase(target.getRawPath())) {
             provider = Provider.ALIPAY;
@@ -61,12 +66,32 @@ final class PaymentHandoff {
         }
 
         if (declaredPackage != null && !provider.packageName.equals(declaredPackage)) return null;
-        String host = officialHost(sourceUrl);
-        if (!"platform.deepseek.com".equals(host) && !belongsToProvider(host, provider)) return null;
+        if (!allowsSource(sourceUrl, provider)) return null;
 
         String fallback = originalWebLink;
         if (safeFallback(browserFallback, provider)) fallback = browserFallback;
         return new PaymentHandoff(provider, destination, fallback);
+    }
+
+    // A merchant-issued Alipay QR URL can be handed to Alipay exactly as displayed.
+    static boolean isAlipayQr(String address) {
+        URI uri = PlatformNavigation.https(address);
+        return uri != null && "qr.alipay.com".equals(officialHost(address))
+                && uri.getRawPath().matches("/[A-Za-z0-9_-]{5,128}/?") && uri.getRawFragment() == null;
+    }
+
+    static boolean isCheckout(String address) {
+        return PlatformNavigation.TOP_UP.equals(PlatformNavigation.platformPath(address))
+                || isAlipayCashier(address) || isAlipayQr(address) || isWechatH5(address)
+                || "openapi.alipay.com".equals(officialHost(address))
+                || "render.alipay.com".equals(officialHost(address));
+    }
+
+    static String wechatMerchantReferer(String source, String target) {
+        // Forward only the origin of the actual merchant that initiated this H5 navigation.
+        URI url = PlatformNavigation.https(target);
+        return PlatformNavigation.TOP_UP.equals(PlatformNavigation.platformPath(source)) && isWechatH5(target)
+                && url.getRawQuery() != null && !url.getRawQuery().isEmpty() ? PlatformNavigation.BASE + "/" : null;
     }
 
     static boolean isWechatH5(String address) {
@@ -96,7 +121,9 @@ final class PaymentHandoff {
         return provider == Provider.ALIPAY ? isAlipayCashier(address) : isWechatH5(address);
     }
 
-    private static boolean belongsToProvider(String host, Provider provider) {
+    static boolean allowsSource(String url, Provider provider) {
+        String host = officialHost(url);
+        if (PlatformNavigation.TOP_UP.equals(PlatformNavigation.platformPath(url))) return true;
         if (provider == Provider.ALIPAY) return within(host, "alipay.com");
         return within(host, "tenpay.com") || within(host, "weixin.qq.com");
     }

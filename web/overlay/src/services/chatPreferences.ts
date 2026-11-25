@@ -1,5 +1,6 @@
 import { create } from 'zustand'
-import { getActiveWorkspaceId, profileStorageName } from './profiles.js'
+import { changeKey } from './settings.js'
+import { getActiveWorkspaceId, isSwitchingProfile, profileStorageName } from './profiles.js'
 
 export const fontScales = { compact: 90, standard: 100, large: 115, largest: 130 } as const
 export type FontSize = keyof typeof fontScales
@@ -41,7 +42,12 @@ export function setFontSize(font: FontSize) {
   applyFontSize()
 }
 export function initializeDevicePreferences() {
-  window.tokenSeekSetWorkspace?.(getActiveWorkspaceId())
+  if (window.tokenSeekSetWorkspace) {
+    window.tokenSeekSetWorkspace(getActiveWorkspaceId())
+    window.addEventListener('tokenseek:resume', () => {
+      if (!isSwitchingProfile()) changeKey('read')
+    })
+  }
   applyFontSize()
 }
 function applyFontSize() {

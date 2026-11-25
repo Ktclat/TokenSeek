@@ -19,7 +19,7 @@ final class OfficialKeyDirectory {
     }
 
     private enum Route { OTHER, KEYS, SIGN_IN, LOGIN_RETURN }
-    private enum Screen { CLOSED, LOADING, LIST, UNAVAILABLE, SIGN_IN, ACTION, WEBSITE }
+    private enum Screen { CLOSED, LOADING, LIST, UNAVAILABLE, SIGN_IN, ACTION, REVIEW, WEBSITE }
 
     private static final String KEY_PAGE = "window === window.top && location.origin === 'https://platform.deepseek.com'"
             + " && location.pathname === '/api_keys'";
@@ -42,11 +42,15 @@ final class OfficialKeyDirectory {
     private JSONArray rows;
 
     OfficialKeyDirectory(Context context, FrameLayout layer, Button returnButton, Host host) {
+        this(context, layer, returnButton, host, null);
+    }
+
+    OfficialKeyDirectory(Context context, FrameLayout layer, Button returnButton, Host host, String workspaceId) {
         this.layer = layer;
         this.returnButton = returnButton;
         this.host = host;
         adapter = LocalSite.bundledScript(context, R.raw.platform_keys);
-        form = new OfficialKeyForm(context);
+        form = new OfficialKeyForm(context, workspaceId);
         panel = new OfficialKeyPanel(context, this::action);
         layer.addView(panel, new FrameLayout.LayoutParams(-1, -1));
         layer.setClickable(true);
@@ -82,6 +86,7 @@ final class OfficialKeyDirectory {
             case SIGN_IN: panel.showSignInNeeded(); break;
             case UNAVAILABLE: panel.unavailable(); break;
             case ACTION: panel.awaitingConfirmation(); break;
+            case REVIEW: panel.reviewOnPlatform(); break;
             default: break;
         }
     }
@@ -132,8 +137,11 @@ final class OfficialKeyDirectory {
 
     private void timedOut() {
         if (screen == Screen.LOADING) {
-            layer.removeCallbacks(poll);
             show(Screen.UNAVAILABLE);
+            // Hydration and account data can arrive after the initial network timeout.
+            // Keep the native view recoverable without restarting the official request.
+            layer.removeCallbacks(poll);
+            if (ready && !paused) layer.postDelayed(poll, 2500);
         }
     }
 
@@ -143,7 +151,7 @@ final class OfficialKeyDirectory {
         cancelWork();
         // An outstanding website action can have completed while the activity was backgrounded.
         // Never click it again or reload a one-time issuance result.
-        if (!paused && (screen == Screen.LOADING || screen == Screen.LIST)) {
+        if (!paused && (screen == Screen.LOADING || screen == Screen.LIST || screen == Screen.UNAVAILABLE)) {
             if (screen == Screen.LOADING) startDeadline();
             if (ready) refresh();
         }
@@ -157,7 +165,7 @@ final class OfficialKeyDirectory {
     private void refresh() {
         WebView view = source;
         if (view == null || !ready || paused || route != Route.KEYS || screen == Screen.WEBSITE
-                || screen == Screen.ACTION || !PlatformNavigation.isKeyPage(view.getUrl())) return;
+                || screen == Screen.ACTION || screen == Screen.REVIEW || !PlatformNavigation.isKeyPage(view.getUrl())) return;
         layer.removeCallbacks(poll);
         long token = ++generation;
         String expression = "(() => { if (!(" + KEY_PAGE + ")) return null; if (!window.__tokenSeekKeyDirectoryV1) {"
@@ -183,6 +191,7 @@ final class OfficialKeyDirectory {
                     startDeadline();
                 }
                 if (screen == Screen.LOADING) layer.postDelayed(poll, 600);
+                else if (screen == Screen.UNAVAILABLE) layer.postDelayed(poll, 4000);
             }
         });
     }
@@ -247,9 +256,12 @@ final class OfficialKeyDirectory {
                         if (!current(view, token)) return;
                         if (website) action("official");
                         else action("retry");
-                    });
+                    }, () -> { if (current(view, token)) show(Screen.REVIEW); });
                     break;
-                case "\"source\"": action("official"); break;
+                case "\"source\"":
+                    if (operation.equals("usage") || operation.equals("show")) action("official");
+                    else show(Screen.REVIEW);
+                    break;
                 default: resumeDirectory(); break; // Page advanced, or a row changed before the tap.
             }
         });

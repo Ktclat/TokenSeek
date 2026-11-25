@@ -64,6 +64,41 @@ public class PaymentHandoffTest {
         assertEquals(MWEB, handoff.fallback);
     }
 
+    @Test public void alipayQrUsesOnlyTheOriginalHttpsOrderAndTrustedCheckout() {
+        String qr = "https://qr.alipay.com/bax020000000001?order=AA%2B%2FB%3D&extra=x%26y";
+        assertTrue(PaymentHandoff.isAlipayQr(qr));
+        PaymentHandoff handoff = PaymentHandoff.from(TOP_UP, qr, null, null);
+        assertEquals(PaymentHandoff.Provider.ALIPAY, handoff.provider);
+        assertEquals(qr, handoff.appUrl);
+        assertEquals(qr, handoff.fallback);
+        assertNull(PaymentHandoff.from(TOP_UP, qr, "com.tencent.mm", null));
+        assertNull(PaymentHandoff.from("https://platform.deepseek.com/sign_in", qr, null, null));
+        for (String invalid : new String[]{"http://qr.alipay.com/bax020000000001",
+                "https://qr.alipay.com.evil.example/bax020000000001", "https://name@qr.alipay.com/bax020000000001",
+                "https://qr.alipay.com:444/bax020000000001", "https://qr.alipay.com/", qr + "#elsewhere",
+                "https://qr.alipay.com/other/checkout", "https://qr.alipay.com/%2F%2Fother.example"}) {
+            assertFalse(invalid, PaymentHandoff.isAlipayQr(invalid));
+        }
+    }
+
+    @Test public void wechatH5ReceivesOnlyTheOriginFromTheActualMerchant() {
+        assertEquals(PlatformNavigation.BASE + "/", PaymentHandoff.wechatMerchantReferer(TOP_UP, MWEB));
+        assertEquals(PlatformNavigation.BASE + "/", PaymentHandoff.wechatMerchantReferer(TOP_UP + "?opaque=private", MWEB));
+        assertNull(PaymentHandoff.wechatMerchantReferer(CASHIER, MWEB));
+        assertNull(PaymentHandoff.wechatMerchantReferer(TOP_UP, MWEB.replace("wx.tenpay.com", "wx.tenpay.com.evil.example")));
+        assertNull(PaymentHandoff.wechatMerchantReferer(TOP_UP, MWEB.split("[?]")[0]));
+        assertNull(PaymentHandoff.wechatMerchantReferer(TOP_UP, WECHAT));
+        assertNull(PaymentHandoff.wechatMerchantReferer("https://platform.deepseek.com.evil.example/top_up", MWEB));
+        assertNull(PaymentHandoff.wechatMerchantReferer("https://platform.deepseek.com/api_keys", MWEB));
+        assertNull(PaymentHandoff.from(TOP_UP, "weixin://wxpay/bizpayurl?pr=sample", null, null));
+    }
+
+    @Test public void supportsSingularAlipayStartAppAndRequiresTheMatchingPackage() {
+        String scheme = ALIPAY.replace("alipays://", "alipay://");
+        assertEquals(scheme, PaymentHandoff.from(CASHIER, scheme, "com.eg.android.AlipayGphone", null).appUrl);
+        assertNull(PaymentHandoff.from(CASHIER, scheme, "com.fake.wallet", null));
+    }
+
     @Test public void originatingPageAndAnyDeclaredPackageMustMatchTheProvider() {
         for (String source : new String[]{"https://wx.tenpay.com.example.org/", "https://example.org/",
                 "https://guest@platform.deepseek.com/", "https://platform.deepseek.com:8443/",

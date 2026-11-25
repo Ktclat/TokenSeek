@@ -5,13 +5,16 @@ TokenSeek 是一个独立的 DeepSeek 安卓客户端。聊天界面基于官方
 ## 登录、充值和密钥
 
 1. 在聊天侧栏右下角点齿轮即可打开设置。点左下角头像可直接进入「DeepSeek 账户」，在「登录 DeepSeek」中完成官方账户验证。官方窗口顶部显示当前域名。[开放平台登录](https://platform.deepseek.com/sign_in)
-2. 在「设置 → 开放平台 API 密钥」或「聊天使用的密钥 → 创建或管理官方密钥」查看当前官方账户的密钥，包括在其他设备上创建的密钥。Android 原生列表逐行显示名称和官网提供的 Tracking ID 或密钥掩码。点「新建 API 密钥」可以创建，点某行的「更多」可以重命名或删除。官网提供分页时可翻页。加载中、需要登录或读取失败时都在应用内显示相应状态。[官方密钥管理](https://platform.deepseek.com/api_keys)
+2. 在「设置 → API 密钥管理」或「DeepSeek 账户 → API 密钥管理」查看当前官方账户的密钥，包括在其他设备上创建的密钥。Android 原生列表逐行显示名称和官网提供的 Tracking ID 或密钥掩码。点「新建 API 密钥」可以创建，点某行的「更多」可以重命名或删除。DSH 等由官方托管的密钥按平台允许的操作展示。官网提供分页时可翻页。加载中、需要登录或读取失败时都在应用内显示相应状态。[官方密钥管理](https://platform.deepseek.com/api_keys)
 3. 在「DeepSeek 账户 → 余额与充值」查看余额，选择 ¥10、¥50、¥100 或输入自定义人民币金额。进入官方收银台后点「填入」可将金额写入可识别的人民币充值输入框，核对账号、官网金额和支付方式后再付款。遇到其他表单时，可复制金额或按官网提供的选项填写。支持的金额和支付方式以官网为准。[官方充值页](https://platform.deepseek.com/top_up)
-4. 支付宝唤起时保留官方链接中的订单参数。手机无法接管链接时，可以在原收银台继续；如需浏览器，也可以从官方充值入口重新开始并核对浏览器账号。返回应用后可查看官方账单，在账户页刷新余额。[官方账单](https://platform.deepseek.com/transactions)
+4. 支付宝收银台发出唤起链接后，应用用原订单打开已安装的支付宝。如果官网只显示付款码，先让完整二维码出现在屏幕上，再点「打开支付宝或微信」。对识别到的支付宝官方 HTTPS 订单码，应用在本机解码并交给支付宝。要核对支付结果，可回到账户页刷新余额或查看官方账单。[官方账单](https://platform.deepseek.com/transactions)
+5. 微信 H5 订单可以按官方链接唤起微信。对于微信 Native 扫码单，应用可显示当前订单的大码供另一台设备扫描。要在本机继续，可点「复制充值网址并打开微信」，在微信中打开官方充值页，核对账号和原订单状态。该操作复制的是充值入口网址。[微信 H5 支付](https://pay.wechatpay.cn/doc/v3/merchant/4012791845) · [微信 Native 支付](https://pay.wechatpay.cn/doc/v3/merchant/4012791874)
 
-「聊天使用的密钥」管理这台设备保存的 Key，可命名、切换或移除。要使用新建的官方密钥，在官方创建页复制后点「用于聊天」，粘贴并验证，之后聊天和余额查询都会使用它。手机通过 Android Keystore 加密保存选用的密钥。要撤销某把密钥在所有设备上的访问权，请在「开放平台 API 密钥」中操作。[首次调用 API](https://api-docs.deepseek.com/zh-cn/)
+「聊天使用的密钥」使用 Android 原生列表和输入框，可添加、验证、选择、改名或从本机移除已有密钥。账户和聊天沿用现有的 Android Keystore 加密存储。撤销官方密钥需在「API 密钥管理」中操作。[首次调用 API](https://api-docs.deepseek.com/zh-cn/)
 
-Tracking ID 用于识别平台上的某把密钥。聊天鉴权需要完整的 API Key，完整值仅在创建时由 DeepSeek 展示一次。Android 列表和表单使用当前账户的官方登录会话。遇到登录验证、查看官方用量、领取新密钥或无法识别的操作表单时，应用会显示官方页面及其域名。读取列表失败时，可以在原生页重试或手动打开官网。
+新建官方密钥后，如果平台已展示这一次签发的结果，可以直接点「保存并用于聊天」。应用将它保存在当前本机账户，并在返回时更新聊天与余额查询用的密钥。Tracking ID 用于定位已有密钥；聊天鉴权需要完整的 API Key。需要查看一次性完整密钥或手动绑定时，可在官方创建结果中复制。官网仅在创建时展示完整值。
+
+官方目录、加载状态和支持的管理表单都使用 Android 控件。数据来自当前登录账户的官方页面。账户验证、查看官网用量或手动核对不受支持的表单时，可在应用内打开带域名的官方页面。
 
 官方余额接口可分币种查询总余额、充值余额和赠金。DeepSeek 的公开 API 文档提供余额查询。账户级密钥管理和充值下单仍通过官方开放平台会话完成。[官方 API 文档](https://api-docs.deepseek.com/zh-cn/api/deepseek-api/) · [官方余额接口](https://api-docs.deepseek.com/zh-cn/api/get-user-balance/)
 
@@ -28,7 +31,7 @@ Tracking ID 用于识别平台上的某把密钥。聊天鉴权需要完整的 A
 
 输入框内的圆环表示当前分支预计剩余的上下文。点圆环可查看剩余空间、草稿估算，以及整个会话和每次回答的实际用量；重新生成的其他分支也算入会话累计。实际用量采用 API 返回的 token 记录。附件内容等无法可靠估算时，圆环显示「—」，详情会说明原因。[官方模型列表](https://api-docs.deepseek.com/zh-cn/api/list-models/) · [用量字段](https://api-docs.deepseek.com/zh-cn/api/create-message/)
 
-设置首页、DeepSeek 账户、官方密钥目录、余额与充值、外观、字体大小和个性化使用 Android 原生控件。可以切换跟随系统、浅色或深色，调整四档字号，以及为每个账户设置回答风格与默认回答语言。聊天正文和本机管理页面由 APK 内置界面渲染。开放平台的身份验证、收款和官方密钥签发由应用内官方页面完成。窄屏会为官网的过宽表格和过高对话框提供滚动，方便核对整行数据和触达表单底部按钮。
+设置首页、DeepSeek 账户、官方密钥目录、本机聊天密钥、余额与充值、外观、字体大小和个性化使用 Android 原生控件。可以切换跟随系统、浅色或深色，调整四档字号，以及为每个账户设置回答风格与默认回答语言。聊天正文由 APK 内置界面渲染。开放平台的身份验证、收款和官方密钥签发由应用内官方页面完成。窄屏会为官网的过宽表格和过高对话框提供滚动，方便核对整行数据和触达表单底部按钮。
 
 ## 对话导入与导出
 
@@ -38,7 +41,7 @@ Tracking ID 用于识别平台上的某把密钥。聊天鉴权需要完整的 A
 
 ## 待办
 
-通过 DeepSeek 网页端账户直接聊天、无需开放平台 API Key 的模式已列入待办。0.8.0 的聊天仍使用开放平台 API。
+通过 DeepSeek 网页端账户直接聊天、无需开放平台 API Key 的模式已列入待办。0.9.0 的聊天仍使用开放平台 API。
 
 ## 构建安卓版
 
@@ -53,7 +56,7 @@ Tracking ID 用于识别平台上的某把密钥。聊天鉴权需要完整的 A
 | 部分 | 源码 |
 | --- | --- |
 | 聊天页、侧栏、模型与用量 | `web/overlay/src/components/chatInput/`、`web/overlay/src/components/sider/`、`web/overlay/src/services/chat/` |
-| 本机账户、钱包与密钥 | `web/overlay/src/components/settings/`、`web/overlay/src/services/profiles.ts`、`app/src/main/java/io/tokenseek/app/KeyVault.java` |
-| Android 原生设置、官方页面和支付 | `app/src/main/java/io/tokenseek/app/NativeSettings.java`、`app/src/main/java/io/tokenseek/app/OfficialPlatformActivity.java`、`app/src/main/java/io/tokenseek/app/PaymentHandoff.java` |
-| Android 原生官方密钥管理 | `OfficialKeyDirectory.java`、`OfficialKeyPanel.java`、`OfficialKeyForm.java`、`app/src/main/res/raw/platform_keys.js`、`app/src/main/res/raw/platform_key_form.js` |
+| 本机账户、钱包与密钥 | `web/overlay/src/components/settings/`、`web/overlay/src/services/profiles.ts`、`app/src/main/java/io/tokenseek/app/NativeChatKeys.java`、`KeyVault.java` |
+| Android 原生设置、官方页面和支付 | `app/src/main/java/io/tokenseek/app/NativeSettings.java`、`app/src/main/java/io/tokenseek/app/OfficialPlatformActivity.java`、`app/src/main/java/io/tokenseek/app/PaymentHandoff.java`、`NativePaymentQr.java` |
+| Android 原生官方密钥管理 | `OfficialKeyDirectory.java`、`OfficialKeyPanel.java`、`OfficialKeyForm.java`、`OfficialIssuedKey.java`、`app/src/main/res/raw/platform_keys.js`、`app/src/main/res/raw/platform_key_form.js` |
 | 官方 Demo 版本、差异及打包 | `tools/build-web.sh`、`web/patches/` |

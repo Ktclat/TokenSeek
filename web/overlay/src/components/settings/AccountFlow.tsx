@@ -16,13 +16,13 @@ import styles from './SettingsPages.module.css'
 const accountText = {
   'zh-CN': {
     title: 'DeepSeek 账户', login: '登录 DeepSeek', home: '在官方平台查看账户',
-    funding: '余额与充值', keys: 'API 密钥', officialKeys: '官方全部密钥', chatKey: '聊天使用的密钥',
+    funding: '余额与充值', keys: 'API 密钥', officialKeys: 'API 密钥管理', chatKey: '聊天使用的密钥',
     noKey: '未选用', unbound: '未绑定密钥', loading: '正在查询…', invalid: '密钥已失效',
     error: '暂时无法查询', empty: '暂无余额明细',
   },
   'en-US': {
     title: 'DeepSeek account', login: 'Sign in to DeepSeek', home: 'View account on DeepSeek',
-    funding: 'Balance and top-up', keys: 'API keys', officialKeys: 'All keys on DeepSeek', chatKey: 'Key for chat',
+    funding: 'Balance and top-up', keys: 'API keys', officialKeys: 'Manage platform API keys', chatKey: 'Key for chat',
     noKey: 'None selected', unbound: 'No key connected', loading: 'Checking…', invalid: 'Invalid key',
     error: 'Balance unavailable', empty: 'No balance details',
   },

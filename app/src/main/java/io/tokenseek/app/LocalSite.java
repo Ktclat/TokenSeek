@@ -40,6 +40,10 @@ final class LocalSite extends WebViewClient {
         return ownedOrigin(uri) && "/site/index.html".equals(uri.getEncodedPath()) && uri.getQuery() == null;
     }
 
+    @Override public void onPageStarted(WebView view, String url, android.graphics.Bitmap icon) {
+        if (isIndex(Uri.parse(url))) activity.onLocalPageStarted();
+    }
+
     @Override public void onPageFinished(WebView view, String url) {
         if (isIndex(Uri.parse(url))) activity.onLocalPageReady();
     }

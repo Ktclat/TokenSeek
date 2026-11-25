@@ -22,4 +22,9 @@
     <string name="key_panel_pending_title">等待官方确认</string>
     <string name="key_panel_pending_detail">正在准备下一步操作。</string>
     <string name="key_panel_official">打开官方页面</string>
+    <string name="key_panel_harness">由 DeepSeek Harness 管理</string>
+    <string name="key_panel_review">在 DeepSeek 核对此操作</string>
+    <string name="key_panel_review_detail">打开当前官方表单可以查看详情和处理结果。</string>
+    <string name="key_panel_verify">前往官方认证</string>
+    <string name="key_panel_verify_detail">DeepSeek 要求此账户完成实名认证后才能创建 API 密钥。</string>
 </resources>
