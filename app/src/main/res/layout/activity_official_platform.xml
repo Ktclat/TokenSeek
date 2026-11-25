@@ -15,6 +15,10 @@
                 android:includeFontPadding="false" android:singleLine="true" android:ellipsize="middle" android:textDirection="ltr"
                 android:textSize="12sp" android:textColor="@color/platform_muted" />
         </LinearLayout>
+        <Button android:id="@+id/platform_payment_browser" style="@style/PlatformAction"
+            android:layout_width="wrap_content" android:layout_height="wrap_content" android:visibility="gone"
+            android:layout_marginEnd="4dp" android:text="@string/platform_browser_short"
+            android:contentDescription="@string/platform_payment_browser_description" />
         <Button android:id="@+id/platform_bind" style="@style/PlatformAction"
             android:layout_width="wrap_content" android:layout_height="wrap_content" android:visibility="gone"
             android:layout_marginEnd="4dp" android:text="@string/platform_bind" />
@@ -39,6 +43,12 @@
                 android:layout_width="wrap_content" android:layout_height="wrap_content"/>
         </LinearLayout>
     </LinearLayout>
+    <Button android:id="@+id/platform_fill_amount" style="@style/PlatformAction"
+        android:layout_width="wrap_content" android:layout_height="wrap_content"
+        android:layout_gravity="end" android:layout_marginEnd="8dp" android:visibility="gone" />
+    <Button android:id="@+id/platform_key_view" style="@style/PlatformAction"
+        android:layout_width="wrap_content" android:layout_height="wrap_content"
+        android:layout_gravity="end" android:layout_marginEnd="8dp" android:visibility="gone" />
     <FrameLayout android:id="@+id/platform_windows" android:layout_width="match_parent"
         android:layout_height="0dp" android:layout_weight="1" />
 </LinearLayout>

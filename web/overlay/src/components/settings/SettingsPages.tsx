@@ -5,7 +5,6 @@ import { regionCodes, getRegionName, provinces } from '../../services/location.j
 import { isChineseBrowser, setLocale, setLocation, setTtsVoice, useSettings } from '../../services/settings.js'
 import { IconChevronRightOutline14 } from '../base/icons.js'
 import { useIsMobile, useMobileViewport } from '../../app/viewport.js'
-import { usePlatformLabels } from './OfficialPlatform.js'
 import { AccountFlow, useAccountText } from './AccountFlow.js'
 import { Button } from '../base/Button.js'
 import { Wallet } from './Wallet.js'
@@ -24,7 +23,6 @@ export const SettingsPages = ({ page, backDisabled, children }: {
   const copy = usePageText()
   const account = useAccountText()
   const profileText = useProfileText()
-  const labels = usePlatformLabels()
   const prefs = usePreferenceLabels()
   const titleRef = useRef<HTMLHeadingElement>(null)
   const frameRef = useMobileViewport(useIsMobile())
@@ -34,7 +32,7 @@ export const SettingsPages = ({ page, backDisabled, children }: {
   const localProvince = isChineseBrowser()
   const titles: Record<SettingsSection, string> = {
     profiles: profileText.profiles,
-    home: t('settings'), account: account.title, wallet: t('wallet'), keys: labels.keys, general: t('settingDialogAsideGeneralOptionLabel'),
+    home: t('settings'), account: account.title, wallet: locale === 'zh-CN' ? '余额与充值' : 'Balance and top-up', keys: prefs.keys, general: t('settingDialogAsideGeneralOptionLabel'),
     data: t('settingDialogAsideDataOptionLabel'), theme: prefs.theme, font: prefs.font, personalization: prefs.personalization,
     language: t('settingsLocalePreference'), voice: t('settingsTtsVoice'),
     location: t('settingsLocation'), cities: t('settingsLocationCity'),

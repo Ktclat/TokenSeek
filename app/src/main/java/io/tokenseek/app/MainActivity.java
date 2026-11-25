@@ -48,6 +48,7 @@ public final class MainActivity extends Activity {
     private final String capability = UUID.randomUUID().toString();
     private WebView web;
     private NativeSettings nativeSettings;
+    private NativeFunding nativeFunding;
     private int systemTextZoom;
     private boolean drawerGestureEnabled;
     private FrameLayout container;
@@ -175,6 +176,10 @@ public final class MainActivity extends Activity {
     }
 
     private void openExternal(Uri uri, String fromPage) {
+        openExternal(uri, fromPage, null);
+    }
+
+    private void openExternal(Uri uri, String fromPage, String amount) {
         if (!("https".equals(uri.getScheme()) || "http".equals(uri.getScheme()))
                 || uri.getHost() == null || uri.getUserInfo() != null || LocalSite.ownedOrigin(uri)) return;
         if (OfficialPlatformActivity.isPlatformUrl(uri)) {
@@ -185,8 +190,12 @@ public final class MainActivity extends Activity {
                 if ("wallet".equals(fromPage)) platformParentHash = "#return-official-wallet";
                 else if ("keys".equals(fromPage)) platformParentHash = "#return-official-keys";
                 else if ("account".equals(fromPage)) platformParentHash = "#return-official-account";
+                else if ("home".equals(fromPage)) platformParentHash = "#return-official-home";
                 else platformParentHash = null;
-                startActivityForResult(OfficialPlatformActivity.createIntent(this, uri.toString(), platformOwner), OPEN_PLATFORM);
+                Intent task = OfficialPlatformActivity.createIntent(this, uri.toString(), platformOwner);
+                if (amount != null && PaymentHandoff.MERCHANT.equals(uri.toString()))
+                    task.putExtra(OfficialPlatformActivity.EXTRA_AMOUNT, amount);
+                startActivityForResult(task, OPEN_PLATFORM);
             }
             return;
         }
@@ -305,6 +314,10 @@ public final class MainActivity extends Activity {
     }
 
     private void handleBack() {
+        if (nativeFunding != null) {
+            nativeFunding.back();
+            return;
+        }
         if (nativeSettings != null) {
             nativeSettings.back();
             return;
@@ -329,7 +342,7 @@ public final class MainActivity extends Activity {
 
     private void updateDrawerEdge() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q || web == null) return;
-        if (!drawerGestureEnabled || nativeSettings != null || web.getHeight() == 0) {
+        if (!drawerGestureEnabled || nativeSettings != null || nativeFunding != null || web.getHeight() == 0) {
             web.setSystemGestureExclusionRects(Collections.emptyList());
             return;
         }
@@ -347,8 +360,7 @@ public final class MainActivity extends Activity {
             if (nativeSettings != null) {
                 container.removeView(nativeSettings);
                 nativeSettings = null;
-                updateDrawerEdge();
-                web.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_AUTO);
+                syncNativePanels();
             }
             return;
         }
@@ -356,20 +368,56 @@ public final class MainActivity extends Activity {
             JSONObject screen = new JSONObject(data);
             String page = screen.optString("page");
             if (!(page.equals("home") || page.equals("theme") || page.equals("font")
-                    || page.equals("personalization"))) return;
+                    || page.equals("personalization") || page.equals("account"))) return;
             if (nativeSettings == null) {
+                presentFunding("");
                 nativeSettings = new NativeSettings(this, (source, id) -> {
                     String detail = "{page:" + JSONObject.quote(source) + ",id:" + JSONObject.quote(id) + "}";
                     web.evaluateJavascript("window.dispatchEvent(new CustomEvent('tokenseek:preference-action',{detail:"
                             + detail + "}))", null);
                 });
                 container.addView(nativeSettings, new FrameLayout.LayoutParams(-1, -1));
-                updateDrawerEdge();
-                web.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS);
+                syncNativePanels();
             }
             nativeSettings.render(screen);
         } catch (org.json.JSONException invalidScreen) {
             presentSettings("");
+        }
+    }
+
+    private void syncNativePanels() {
+        updateDrawerEdge();
+        boolean covered = nativeSettings != null || nativeFunding != null;
+        web.setImportantForAccessibility(covered ? View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS
+                : View.IMPORTANT_FOR_ACCESSIBILITY_AUTO);
+    }
+
+    private void presentFunding(String data) {
+        if (isFinishing() || isDestroyed()) return;
+        if (data.isEmpty()) {
+            if (nativeFunding != null) {
+                container.removeView(nativeFunding);
+                nativeFunding = null;
+                syncNativePanels();
+            }
+            return;
+        }
+        try {
+            JSONObject screen = new JSONObject(data);
+            if (!"wallet".equals(screen.optString("page"))) return;
+            if (nativeFunding == null) {
+                presentSettings("");
+                nativeFunding = new NativeFunding(this, (id, amount) -> {
+                    String detail = "{id:" + JSONObject.quote(id) + ",amount:" + JSONObject.quote(amount) + "}";
+                    web.evaluateJavascript("window.dispatchEvent(new CustomEvent('tokenseek:funding-action',{detail:"
+                            + detail + "}))", null);
+                });
+                container.addView(nativeFunding, new FrameLayout.LayoutParams(-1, -1));
+                syncNativePanels();
+            }
+            nativeFunding.render(screen);
+        } catch (org.json.JSONException invalidScreen) {
+            presentFunding("");
         }
     }
 
@@ -390,6 +438,18 @@ public final class MainActivity extends Activity {
         @JavascriptInterface public void showPreferences(String token, String json) {
             if (capability.equals(token) && json != null && json.length() <= 16384)
                 runOnUiThread(() -> presentSettings(json));
+        }
+        @JavascriptInterface public void showFunding(String token, String json) {
+            if (capability.equals(token) && json != null && json.length() <= 16384)
+                runOnUiThread(() -> presentFunding(json));
+        }
+        @JavascriptInterface public void openFunding(String token, String amount) {
+            if (!capability.equals(token) || amount == null) return;
+            String value = NativeFunding.parseAmount(amount).value;
+            if (value.isEmpty()) return;
+            runOnUiThread(() -> {
+                if (nativeFunding != null) openExternal(Uri.parse(PaymentHandoff.MERCHANT), "wallet", value);
+            });
         }
         @JavascriptInterface public void scaleText(String token, int percent) {
             if (capability.equals(token) && percent >= 90 && percent <= 130)

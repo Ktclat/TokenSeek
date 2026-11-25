@@ -1,9 +1,17 @@
+import { useLayoutEffect } from 'react'
+import { useTheme } from '../../app/theme.js'
+import { fontScales, useChatPreferences } from '../../services/chatPreferences.js'
 import { useTranslate, type TranslationKey } from '../../i18n/index.js'
 import { useBalance, type WalletState } from '../../services/walletBalance.js'
-import { platformUrls, usePlatformLabels } from './OfficialPlatform.js'
+import { platformUrls } from './OfficialPlatform.js'
 import { Button } from '../base/Button.js'
-import { closeSettings, pushSettings } from './settingsDialogState.js'
+import { backSettings, closeSettings, pushSettings } from './settingsDialogState.js'
+import { FundingForm, parseAmount, presets, useFundingText } from './Funding.js'
 import styles from './Wallet.module.css'
+
+declare global {
+  interface Window { TokenSeekFunding?: { present(screen: string): void; checkout?(amount: string): void } }
+}
 
 export const WalletIcon = () => (
   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
@@ -62,17 +70,62 @@ export const BalanceSummary = ({ apiKey }: { apiKey: string }) => {
 
 export const Wallet = ({ apiKey }: { apiKey: string | null }) => {
   const t = useTranslate()
-  const labels = usePlatformLabels()
+  const labels = useFundingText()
   const balance = useBalance(apiKey)
+  const dark = useTheme() === 'dark'
+  const scale = useChatPreferences(s => fontScales[s.font])
+  const { state, refresh } = balance
+  const message = walletMessage(state)
+  const canChat = state.status === 'ready' && state.balance.is_available
+  const accountHint = apiKey ? t('walletAccountHint') : labels.signIn
+  const native = window.TokenSeekFunding
+  const screen = JSON.stringify({
+    page: 'wallet', dark, scale, bound: Boolean(apiKey), canChat, status: state.status,
+    message: message ? t(message) : '', accountHint, presets,
+    balances: state.status === 'ready' ? state.balance.balance_infos.map(row => ({
+      currency: row.currency, total: row.total_balance, credit: row.topped_up_balance, grant: row.granted_balance,
+    })) : [],
+    labels: {
+      ...labels, instructions: labels.nativeInstructions, total: t('walletTotal'), refresh: t('walletRefresh'),
+      credit: t('walletCredit'), grant: t('walletGrant'), chat: t('walletChat'),
+    },
+  })
+
+  useLayoutEffect(() => {
+    if (!native) return
+    const action = (event: Event) => {
+      const detail = (event as CustomEvent<{ id?: string; amount?: string }>).detail
+      if (!detail) return
+      switch (detail.id) {
+        case 'back': backSettings(); break
+        case 'refresh': if (apiKey) refresh(); break
+        case 'keys': pushSettings('keys'); break
+        case 'chat': if (canChat) closeSettings(); break
+        case 'checkout':
+          if (typeof detail.amount === 'string') {
+            const amount = parseAmount(detail.amount).amount
+            if (!amount) break
+            if (native.checkout) native.checkout(amount)
+            else window.open(platformUrls.topUp, '_blank', 'noopener,noreferrer')
+          }
+          break
+      }
+    }
+    window.addEventListener('tokenseek:funding-action', action)
+    return () => window.removeEventListener('tokenseek:funding-action', action)
+  }, [native, apiKey, refresh, canChat])
+
+  useLayoutEffect(() => { native?.present(screen) }, [native, screen])
+  useLayoutEffect(() => () => native?.present(''), [native])
+
+  if (native) return null
   return (
-    <section className={styles.wallet} aria-label={t('wallet')}>
+    <section className={styles.wallet} aria-label={labels.title}>
       <BalanceCard bound={Boolean(apiKey)} {...balance} />
-      <div className={styles.actions}>
-        <a className={styles.topUp} href={platformUrls.topUp} target="_blank" rel="noopener noreferrer">{labels.topUp}</a>
-        {balance.state.status === 'ready' && balance.state.balance.is_available &&
-          <Button variant="outlined" onClick={closeSettings}>{t('walletChat')}</Button>}
-      </div>
-      <p className={styles.hint}>{t('walletAccountHint')}</p>
+      {!apiKey && <Button size="m" variant="outlined" onClick={() => pushSettings('keys')}>{labels.keys}</Button>}
+      <FundingForm />
+      <p className={styles.hint}>{accountHint}</p>
+      {canChat && <Button variant="outlined" onClick={closeSettings}>{t('walletChat')}</Button>}
     </section>
   )
 }

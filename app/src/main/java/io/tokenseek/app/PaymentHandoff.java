@@ -36,8 +36,14 @@ final class PaymentHandoff {
         String originalWebLink = null;
         if (isAlipayWrapper(target)) {
             originalWebLink = destination;
-            destination = nestedScheme(target);
-            target = parse(destination);
+            String field = schemeField(target);
+            if (field == null) return null;
+            boolean literal = field.regionMatches(true, 0, "alipays://", 0, "alipays://".length());
+            String nested = literal ? field : decodeField(field);
+            // Alipay also publishes wrappers with unescaped separators. Only unwrap a single,
+            // fully encoded field. Otherwise pass the original verified App Link to its wallet.
+            if (!literal && target.getRawQuery().indexOf('&') < 0) destination = nested;
+            target = parse(nested);
         }
         if (target == null || target.getRawQuery() == null || target.getRawQuery().isEmpty()) return null;
 
@@ -75,6 +81,16 @@ final class PaymentHandoff {
                 || "excashier.alipay.com".equals(host);
     }
 
+    static boolean canOpenPaymentBrowser(String address) {
+        // This action only opens a fresh merchant entry. It never forwards an order URL or POST.
+        return PlatformNavigation.TOP_UP.equals(PlatformNavigation.platformPath(address))
+                || within(officialHost(address), "alipay.com") || isWechatH5(address);
+    }
+
+    boolean isHttpsAppLink() {
+        return PlatformNavigation.https(appUrl) != null;
+    }
+
     private static boolean safeFallback(String address, Provider provider) {
         if (MERCHANT.equals(address)) return true;
         return provider == Provider.ALIPAY ? isAlipayCashier(address) : isWechatH5(address);
@@ -101,7 +117,7 @@ final class PaymentHandoff {
                 && ("/p/s/i/".equals(path) || "/p/s/i".equals(path));
     }
 
-    private static String nestedScheme(URI wrapper) {
+    private static String schemeField(URI wrapper) {
         String query = wrapper.getRawQuery();
         if (query == null) return null;
         String encoded = null;
@@ -110,7 +126,10 @@ final class PaymentHandoff {
             if (encoded != null) return null;
             encoded = field.substring("scheme=".length());
         }
-        if (encoded == null) return null;
+        return encoded;
+    }
+
+    private static String decodeField(String encoded) {
         try {
             // Decode exactly one wrapping layer, leaving the order's own escaping intact.
             return URLDecoder.decode(encoded, "UTF-8");

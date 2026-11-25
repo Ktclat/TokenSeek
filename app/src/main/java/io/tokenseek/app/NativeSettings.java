@@ -156,7 +156,14 @@ final class NativeSettings extends FrameLayout {
         row.setContentDescription(value.isEmpty() ? name : name + ", " + value);
         row.setOnClickListener(v -> listener.action(page, item.optString("id")));
         row.addView(label(name, 16, ink()), new LinearLayout.LayoutParams(0, -2, 1));
-        if (!value.isEmpty()) row.addView(label(value, 14, muted()));
+        if (!value.isEmpty()) {
+            TextView secondary = label(value, 14, muted());
+            secondary.setMaxWidth(dp(Math.min(260, getResources().getConfiguration().screenWidthDp * 2 / 5)));
+            secondary.setGravity(Gravity.END);
+            secondary.setMaxLines(3);
+            secondary.setEllipsize(android.text.TextUtils.TruncateAt.END);
+            row.addView(secondary);
+        }
         TextView arrow = label("›", 20, muted());
         arrow.setPadding(dp(9), 0, 0, 0);
         arrow.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);

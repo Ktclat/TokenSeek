@@ -38,6 +38,14 @@
       })
     });
   }
+  if (typeof host.showFunding === 'function') {
+    Object.defineProperty(window, 'TokenSeekFunding', {
+      value: Object.freeze({
+        present: screen => host.showFunding(token, screen),
+        checkout: typeof host.openFunding === 'function' ? amount => host.openFunding(token, amount) : undefined
+      })
+    });
+  }
 
   Object.defineProperty(window, 'tokenSeekHandleBack', {
     value: () => {

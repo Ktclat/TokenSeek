@@ -1,22 +1,23 @@
-import { useLayoutEffect } from 'react'
+import { useNativeSettingsScreen } from './useNativeSettingsScreen.js'
 import { useTheme } from '../../app/theme.js'
 import { setThemePreference, useSettings, type ThemePreference } from '../../services/settings.js'
 import { fontScales, setFontSize, setPersonalization, useChatPreferences, type FontSize, type AnswerStyle, type AnswerLanguage } from '../../services/chatPreferences.js'
-import { backSettings, pushSettings, type SettingsSection } from './settingsDialogState.js'
+import { pushSettings, type SettingsSection } from './settingsDialogState.js'
 import { SettingsRow } from './SettingsRows.js'
+import { platformUrls } from './OfficialPlatform.js'
 import styles from './SettingsPages.module.css'
 import prefs from './PreferencePanels.module.css'
 
 const labels = {
   'zh-CN': {
-    home: '设置', account: '账户', profile: 'DeepSeek 账户', wallet: '钱包', keys: 'API 密钥', app: '应用',
+    home: '设置', account: '账户', profile: 'DeepSeek 账户', officialKeys: '开放平台 API 密钥', keys: '聊天使用的密钥', app: '应用',
     theme: '外观', font: '字体大小', personalization: '个性化', general: '通用', data: '数据管理', back: '返回',
     mode: '主题', system: '跟随系统', light: '浅色', dark: '深色', compact: '较小', standard: '标准', large: '较大', largest: '最大',
     preview: '预览', sample: '今天想聊点什么？', answer: '回答风格', brief: '简洁', detailed: '详细', lang: '默认回答语言',
     auto: '跟随提问', zh: '中文', en: '英语',
   },
   'en-US': {
-    home: 'Settings', account: 'Account', profile: 'DeepSeek account', wallet: 'Wallet', keys: 'API keys', app: 'App',
+    home: 'Settings', account: 'Account', profile: 'DeepSeek account', officialKeys: 'DeepSeek platform API keys', keys: 'Keys for chat', app: 'App',
     theme: 'Appearance', font: 'Font size', personalization: 'Personalization', general: 'General', data: 'Data management', back: 'Back',
     mode: 'Theme', system: 'System', light: 'Light', dark: 'Dark', compact: 'Small', standard: 'Standard', large: 'Large', largest: 'Extra large',
     preview: 'Preview', sample: 'What would you like to talk about?', answer: 'Response style', brief: 'Concise', detailed: 'Detailed', lang: 'Default response language',
@@ -45,7 +46,9 @@ export function PreferencePanels({ page }: { page: Panel }) {
   let groups: Group[]
   switch (page) {
     case 'home': groups = [
-      { label: t.account, items: [link('account', t.profile), link('wallet', t.wallet), link('keys', t.keys)] },
+      { label: t.account, items: [link('account', t.profile),
+        option('officialKeys', t.officialKeys, () => window.open(platformUrls.keys, '_blank', 'noopener,noreferrer')),
+        link('keys', t.keys)] },
       { label: t.app, items: [link('theme', t.theme, t[theme]), link('personalization', t.personalization),
         link('general', t.general), link('data', t.data)] },
     ]; break
@@ -62,21 +65,7 @@ export function PreferencePanels({ page }: { page: Panel }) {
   const dark = useTheme() === 'dark'
   const screen: Screen = { page, title: t[page], back: t.back, dark, scale: fontScales[font], groups,
     sample: page === 'font' ? t.sample : undefined }
-  const description = JSON.stringify(screen)
-  useLayoutEffect(() => () => window.TokenSeekSettings?.present(''), [])
-  useLayoutEffect(() => {
-    const host = window.TokenSeekSettings
-    if (!host) return
-    const handle = (event: Event) => {
-      const detail = (event as CustomEvent<{ page: string; id: string }>).detail
-      if (detail?.page !== page) return
-      if (detail.id === 'back') backSettings()
-      else actions.get(detail.id)?.()
-    }
-    window.addEventListener('tokenseek:preference-action', handle)
-    host.present(description)
-    return () => window.removeEventListener('tokenseek:preference-action', handle)
-  }, [description])
+  useNativeSettingsScreen(screen, id => actions.get(id)?.())
   return <>
     {screen.sample && <p className={prefs.sample} style={{ fontSize: 16 * screen.scale / 100 }}>{screen.sample}</p>}
     {groups.map((group, i) => <section className={prefs.group} key={group.label ?? i}>

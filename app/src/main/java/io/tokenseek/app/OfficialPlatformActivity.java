@@ -50,7 +50,9 @@ public final class OfficialPlatformActivity extends Activity {
     static final String EXTRA_ROUTE = "io.tokenseek.app.platform.ROUTE";
     static final String EXTRA_BIND = "io.tokenseek.app.platform.BIND";
     static final String EXTRA_WORKSPACE = "io.tokenseek.app.platform.WORKSPACE";
+    static final String EXTRA_AMOUNT = "io.tokenseek.app.platform.TOP_UP_AMOUNT";
     private static final String CONTINUATION_USED = "platform.continuationUsed";
+    private static final String VIEWING_TRANSACTIONS = "platform.viewingTransactions";
     private static final String SHARED_SESSION_USED = "shared-session-used";
     private static final int PAYMENT_WINDOW = 2;
 
@@ -61,6 +63,10 @@ public final class OfficialPlatformActivity extends Activity {
     private TextView title;
     private View notice;
     private Button bind;
+    private OfficialKeyDirectory keyDirectory;
+    private String topUpAmount;
+    private Button fillAmount;
+    private String mobileLayout;
     private String entryRoute;
     private String restartUrl;
     private String workspaceId;
@@ -96,11 +102,13 @@ public final class OfficialPlatformActivity extends Activity {
             return;
         }
         String entryPath = PlatformNavigation.platformPath(initial.toString());
-        String safePath = PlatformNavigation.KEYS.equals(entryPath) || PlatformNavigation.TOP_UP.equals(entryPath)
-                || PlatformNavigation.LOGIN.equals(entryPath) ? entryPath : "/";
+        String safePath = PlatformNavigation.isTaskPath(entryPath) || PlatformNavigation.LOGIN.equals(entryPath) ? entryPath : "/";
         entryRoute = "/".equals(safePath) ? "home" : safePath.substring(1);
         restartUrl = PlatformNavigation.BASE + safePath;
-        navigation = new PlatformNavigation(initial.toString(), state != null && state.getBoolean(CONTINUATION_USED));
+        boolean restoringBill = state != null && state.getBoolean(VIEWING_TRANSACTIONS);
+        if (restoringBill) restartUrl = PlatformNavigation.BASE + PlatformNavigation.TRANSACTIONS;
+        navigation = new PlatformNavigation(restoringBill ? restartUrl : initial.toString(),
+                state != null && state.getBoolean(CONTINUATION_USED));
         setContentView(R.layout.activity_official_platform);
         View decor = getWindow().getDecorView();
         boolean dark = (getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK)
@@ -109,12 +117,22 @@ public final class OfficialPlatformActivity extends Activity {
         decor.setSystemUiVisibility(dark ? decor.getSystemUiVisibility() & ~lightBars
                 : decor.getSystemUiVisibility() | lightBars);
         pages = findViewById(R.id.platform_windows);
+        keyDirectory = new OfficialKeyDirectory(pages, findViewById(R.id.platform_key_view));
+        mobileLayout = LocalSite.bundledScript(this, R.raw.platform_mobile);
+        fillAmount = findViewById(R.id.platform_fill_amount);
+        topUpAmount = PaymentHandoff.MERCHANT.equals(initial.toString())
+                ? NativeFunding.parseAmount(getIntent().getStringExtra(EXTRA_AMOUNT)).value : "";
+        if (!topUpAmount.isEmpty()) {
+            fillAmount.setText(getString(R.string.funding_fill_amount, topUpAmount));
+            fillAmount.setOnClickListener(v -> fillTopUpAmount());
+        }
         progress = findViewById(R.id.platform_progress);
         origin = findViewById(R.id.platform_origin);
         title = findViewById(R.id.platform_title);
         notice = findViewById(R.id.platform_notice);
         bind = findViewById(R.id.platform_bind);
         findViewById(R.id.platform_back).setOnClickListener(v -> back());
+        findViewById(R.id.platform_payment_browser).setOnClickListener(v -> offerPaymentBrowser());
         bind.setOnClickListener(v -> {
             if (canBind(visibleWindow())) returnToChat(true);
         });
@@ -248,7 +266,41 @@ public final class OfficialPlatformActivity extends Activity {
             origin.setText(getString(R.string.platform_https_origin, host + port));
             title.setText(pageTitle(url, host));
         }
-        bind.setVisibility(canBind(visibleWindow()) ? View.VISIBLE : View.GONE);
+        findViewById(R.id.platform_payment_browser).setVisibility(
+                PaymentHandoff.canOpenPaymentBrowser(url) ? View.VISIBLE : View.GONE);
+        WebView current = visibleWindow();
+        boolean keyPage = PlatformNavigation.isKeyPage(url) && canBind(current);
+        bind.setVisibility(keyPage ? View.VISIBLE : View.GONE);
+        keyDirectory.document(keyPage ? current : null);
+        fillAmount.setVisibility(!topUpAmount.isEmpty() && PaymentHandoff.MERCHANT.equals(url)
+                && currentTopUp(current) ? View.VISIBLE : View.GONE);
+    }
+
+    private boolean currentTopUp(WebView view) {
+        if (view == null || view != visibleWindow() || windows.indexOf(view) != 0
+                || !PaymentHandoff.MERCHANT.equals(view.getUrl())) return false;
+        SiteClient site = (SiteClient) view.getWebViewClient();
+        return !site.failed && PaymentHandoff.MERCHANT.equals(site.rendered);
+    }
+
+    private void fillTopUpAmount() {
+        WebView view = visibleWindow();
+        if (topUpAmount.isEmpty() || !currentTopUp(view)) return;
+        String script = LocalSite.bundledScript(this, R.raw.platform_amount);
+        if (script.isEmpty()) return;
+        String expression = "(" + script + "\n)(" + org.json.JSONObject.quote(topUpAmount) + ")";
+        view.evaluateJavascript(expression, result -> {
+            if (isFinishing() || isDestroyed() || !currentTopUp(view)) return;
+            if ("true".equals(result)) {
+                Toast.makeText(this, R.string.funding_filled, Toast.LENGTH_SHORT).show();
+            } else {
+                showNotice(getString(R.string.funding_manual, topUpAmount), getString(R.string.funding_copy), () -> {
+                    android.content.ClipboardManager clipboard = getSystemService(android.content.ClipboardManager.class);
+                    if (clipboard != null) clipboard.setPrimaryClip(android.content.ClipData.newPlainText(
+                            getString(R.string.funding_copy), topUpAmount));
+                });
+            }
+        });
     }
 
     private static int pageTitle(String url, String host) {
@@ -256,6 +308,7 @@ public final class OfficialPlatformActivity extends Activity {
         if (PlatformNavigation.LOGIN.equals(path)) return R.string.platform_login;
         if ("/sign_up".equals(path)) return R.string.platform_signup;
         if (PlatformNavigation.TOP_UP.equals(path)) return R.string.platform_topup;
+        if (PlatformNavigation.TRANSACTIONS.equals(path)) return R.string.platform_transactions;
         if (PlatformNavigation.KEYS.equals(path)) return R.string.platform_keys;
         if (path != null) return R.string.platform_home;
         if ("accounts.google.com".equals(host) || "appleid.apple.com".equals(host)) return R.string.platform_provider;
@@ -303,6 +356,7 @@ public final class OfficialPlatformActivity extends Activity {
         private int lastHistoryIndex = -1;
         private final PlatformNavigation.Document document = new PlatformNavigation.Document();
         private PaymentHandoff.Provider unavailableWallet;
+        private boolean unavailableAlipayAppLink;
 
         @Override public WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest request) {
             if (request.isForMainFrame()) {
@@ -338,6 +392,11 @@ public final class OfficialPlatformActivity extends Activity {
                             return;
                         }
                     }
+                    String path = PlatformNavigation.platformPath(address);
+                    if ("/".equals(path) || PlatformNavigation.LOGIN.equals(path) || "/sign_up".equals(path)
+                            || PlatformNavigation.isTaskPath(path)) {
+                        view.evaluateJavascript(mobileLayout, null);
+                    }
                     showPage(address);
                 }
             });
@@ -352,13 +411,17 @@ public final class OfficialPlatformActivity extends Activity {
                 return request.isForMainFrame() && windows.indexOf(view) <= 0;
             }
             if (request.isForMainFrame() && view == visibleWindow()) {
-                showNotice(getString(R.string.platform_unsupported), "", null);
+                if (PaymentHandoff.canOpenPaymentBrowser(view.getUrl())) offerPaymentBrowser();
+                else showNotice(getString(R.string.platform_unsupported), "", null);
             }
             return true;
         }
 
         @Override public void onPageStarted(WebView view, String url, Bitmap favicon) {
-            if (isPlatformUrl(Uri.parse(url))) unavailableWallet = null;
+            if (isPlatformUrl(Uri.parse(url))) {
+                unavailableWallet = null;
+                unavailableAlipayAppLink = false;
+            }
             document.start(url);
             invalidate();
             finished = false;
@@ -408,6 +471,8 @@ public final class OfficialPlatformActivity extends Activity {
             invalidate();
             if (view == visibleWindow()) {
                 bind.setVisibility(View.GONE);
+                keyDirectory.document(null);
+                fillAmount.setVisibility(View.GONE);
                 showFailure(message);
             }
         }
@@ -440,7 +505,11 @@ public final class OfficialPlatformActivity extends Activity {
         }
 
         @Override public boolean onCreateWindow(WebView opener, boolean dialog, boolean userGesture, Message result) {
-            if (!userGesture || opener != visibleWindow() || windows.size() >= 4) return false;
+            if (opener != visibleWindow()) return false;
+            if (!userGesture || windows.size() >= 4) {
+                if (PaymentHandoff.canOpenPaymentBrowser(opener.getUrl())) offerPaymentBrowser();
+                return false;
+            }
             // Give Chromium a real secondary WebView: window.opener, target=_blank form POSTs,
             // and window.close() retain their normal browser semantics.
             hideNotice();
@@ -484,6 +553,7 @@ public final class OfficialPlatformActivity extends Activity {
         PaymentHandoff handoff = PaymentHandoff.from(source, data, declaredPackage, fallback);
         if (handoff == null) return false;
         SiteClient client = (SiteClient) view.getWebViewClient();
+        if (handoff.isHttpsAppLink() && client.unavailableAlipayAppLink) return false;
         if (client.unavailableWallet == handoff.provider) {
             // A cashier can issue its app link again after opening a web fallback. Keep HTTPS
             // navigation intact and never present the same unavailable wallet in a loop.
@@ -499,10 +569,19 @@ public final class OfficialPlatformActivity extends Activity {
             Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(handoff.appUrl))
                     .setPackage(handoff.provider.packageName).addCategory(Intent.CATEGORY_BROWSABLE);
             if (!startPaymentWindow(intent)) {
-                client.unavailableWallet = handoff.provider;
+                // An installed wallet may support its custom scheme but not verified App Links.
+                // Let the original HTTPS page continue, including a later scheme launch.
+                if (handoff.isHttpsAppLink()) client.unavailableAlipayAppLink = true;
+                else client.unavailableWallet = handoff.provider;
                 // WeChat's H5 entry must be reached from its registered merchant and can be
                 // short lived. A native loadUrl cannot reproduce that browser navigation.
-                if (handoff.fallback == null || PaymentHandoff.isWechatH5(handoff.fallback)) {
+                if (handoff.provider == PaymentHandoff.Provider.ALIPAY && PaymentHandoff.isAlipayCashier(view.getUrl())
+                        && (handoff.fallback == null || handoff.fallback.equals(view.getUrl()))) {
+                    // This cashier may be the response to a POST. Keep the open document in
+                    // place, including any payment methods it offers, rather than replaying it.
+                    showNotice(getString(R.string.platform_alipay_stay), getString(R.string.platform_back_to_cashier),
+                            () -> view.requestFocus());
+                } else if (handoff.fallback == null || PaymentHandoff.isWechatH5(handoff.fallback)) {
                     offerPaymentBrowser();
                 } else {
                     showNotice(getString(R.string.platform_wallet_missing, name),
@@ -543,8 +622,11 @@ public final class OfficialPlatformActivity extends Activity {
         super.onActivityResult(request, result, data);
         if (request == PAYMENT_WINDOW && !isFinishing()) {
             // A wallet can return for success, cancellation or failure. DeepSeek owns the order.
-            showNotice(getString(R.string.platform_payment_return), getString(R.string.platform_check_topup),
-                    () -> openOfficialEntry(PaymentHandoff.MERCHANT));
+            showNotice(getString(R.string.platform_payment_return), getString(R.string.platform_check_transactions), () -> {
+                restartUrl = PlatformNavigation.BASE + PlatformNavigation.TRANSACTIONS;
+                navigation = new PlatformNavigation(restartUrl, false);
+                openOfficialEntry(restartUrl);
+            });
         }
     }
 
@@ -596,20 +678,24 @@ public final class OfficialPlatformActivity extends Activity {
         super.onSaveInstanceState(state);
         // Restore the official entry with a fresh GET. An interrupted payment form must not be reposted.
         if (navigation != null) state.putBoolean(CONTINUATION_USED, navigation.continuationConsumed());
+        state.putBoolean(VIEWING_TRANSACTIONS, (PlatformNavigation.BASE + PlatformNavigation.TRANSACTIONS).equals(restartUrl));
     }
 
     @Override protected void onResume() {
         super.onResume();
         for (WebView view : windows) view.onResume();
+        if (keyDirectory != null) keyDirectory.setPaused(false);
     }
 
     @Override protected void onPause() {
+        if (keyDirectory != null) keyDirectory.setPaused(true);
         for (WebView view : windows) view.onPause();
         if (cookies != null) cookies.flush();
         super.onPause();
     }
 
     @Override protected void onDestroy() {
+        if (keyDirectory != null) keyDirectory.document(null);
         while (!windows.isEmpty()) removeWindow(visibleWindow());
         super.onDestroy();
     }

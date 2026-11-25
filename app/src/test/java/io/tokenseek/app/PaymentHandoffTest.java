@@ -23,6 +23,36 @@ public class PaymentHandoffTest {
         assertEquals(ALIPAY_WRAPPER, wrapped.fallback);
     }
 
+    @Test public void alipayWrapperWithLiteralSchemeIsForwardedIntactToTheOfficialPackage() {
+        // This second published wrapper form has unescaped ampersands. Their ownership cannot
+        // be determined by a generic query parser. The signed content must survive unchanged.
+        String link = "https://render.alipay.com/p/s/i/?scheme=alipays://platformapi/startapp"
+                + "?appId=123&page=%2Fcashier%2Findex&order=AZ%2B%2F%3D&chInfo=sample";
+        PaymentHandoff handoff = PaymentHandoff.from(TOP_UP, link, null, null);
+        assertEquals("com.eg.android.AlipayGphone", handoff.provider.packageName);
+        assertTrue(handoff.isHttpsAppLink());
+        assertEquals(link, handoff.appUrl);
+        assertEquals(link, handoff.fallback);
+        String extraParameters = ALIPAY_WRAPPER + "&chInfo=sample";
+        assertEquals(extraParameters, PaymentHandoff.from(TOP_UP, extraParameters, null, null).appUrl);
+        assertNull(PaymentHandoff.from("https://unrelated.example/", link, null, null));
+        assertNull(PaymentHandoff.from(TOP_UP, link, "com.example.wallet", null));
+    }
+
+    @Test public void ordinaryCashierAndRechargeCanSwitchToTheBrowserWithoutHandingOffOrderData() {
+        String gateway = "https://openapi.alipay.com/gateway.do";
+        for (String page : new String[]{TOP_UP, CASHIER, gateway, ALIPAY_WRAPPER, MWEB}) {
+            assertTrue(page, PaymentHandoff.canOpenPaymentBrowser(page));
+        }
+        assertNull(PaymentHandoff.from(TOP_UP, gateway, null, null));
+        assertNull(PaymentHandoff.from(TOP_UP, CASHIER, null, null));
+        for (String other : new String[]{"https://platform.deepseek.com/sign_in", "https://alipay.com.example.org/",
+                "http://mclient.alipay.com/", "https://mclient.alipay.com:8443/", "about:blank", null}) {
+            assertFalse(other, PaymentHandoff.canOpenPaymentBrowser(other));
+        }
+        assertEquals("https://platform.deepseek.com/top_up", PaymentHandoff.MERCHANT);
+    }
+
     @Test public void wechatH5PagesStayInBrowserAndOnlyPaymentSchemesOpenWallet() {
         assertTrue(PaymentHandoff.isWechatH5(MWEB));
         assertNull(PaymentHandoff.from(TOP_UP, MWEB, null, null));

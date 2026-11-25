@@ -19,6 +19,10 @@
     <string name="platform_previous_shared_session">Another local profile previously shared this sign-in. Check your DeepSeek account.</string>
     <string name="platform_profile_unavailable">Could not open this profile’s official session. Update Android System WebView and try again.</string>
     <string name="platform_browser">Continue in browser</string>
+    <string name="platform_browser_short">Browser</string>
+    <string name="platform_payment_browser_description">Open the official DeepSeek top-up page in your browser</string>
+    <string name="platform_alipay_stay">Alipay could not open. Check this checkout page for other ways to pay, or use the Browser button above.</string>
+    <string name="platform_back_to_cashier">Back to checkout</string>
     <string name="platform_payment_app">This payment page wants to open %1$s.</string>
     <string name="platform_open_payment">Open %1$s</string>
     <string name="platform_alipay">Alipay</string>
@@ -29,5 +33,6 @@
     <string name="platform_web_cashier">Continue in web checkout</string>
     <string name="platform_cashier_browser">If checkout is unavailable here, open the DeepSeek top-up page in your browser. Check which account is signed in there before paying.</string>
     <string name="platform_payment_return">Check the DeepSeek platform to see whether your top-up was credited.</string>
-    <string name="platform_check_topup">View official top-up page</string>
+    <string name="platform_check_transactions">View official billing history</string>
+    <string name="platform_transactions">Billing history</string>
 </resources>

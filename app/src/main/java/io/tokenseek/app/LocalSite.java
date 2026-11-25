@@ -119,4 +119,12 @@ final class LocalSite extends WebViewClient {
         while ((size = stream.read(part)) != -1) buffer.write(part, 0, size);
         return buffer.toString("UTF-8");
     }
+
+    static String bundledScript(android.content.Context context, int resource) {
+        try (InputStream raw = context.getResources().openRawResource(resource)) {
+            return read(raw);
+        } catch (IOException unavailable) {
+            return "";
+        }
+    }
 }
