@@ -1,0 +1,27 @@
+<resources>
+    <string name="key_panel_title">Platform API keys</string>
+    <string name="key_panel_usage">Usage</string>
+    <string name="key_panel_create">Create key</string>
+    <string name="key_panel_empty">No API keys yet</string>
+    <string name="key_panel_tracking">Tracking ID · %1$s</string>
+    <string name="key_panel_rename">Rename</string>
+    <string name="key_panel_revoke">Delete</string>
+    <string name="key_panel_show">View on DeepSeek</string>
+    <string name="key_panel_revoke_title">Delete platform key?</string>
+    <string name="key_panel_revoke_message">Apps using “%1$s” will lose access.</string>
+    <string name="key_panel_confirm">Continue</string>
+    <string name="key_panel_retry">Retry</string>
+    <string name="key_panel_loading">Loading your keys from DeepSeek…</string>
+    <string name="key_panel_unavailable">Couldn’t load your API keys</string>
+    <string name="key_panel_login_title">Sign in to view API keys</string>
+    <string name="key_panel_login_detail">Use the platform account that owns the keys.</string>
+    <string name="key_panel_login">Sign in to DeepSeek</string>
+    <string name="key_panel_pending_title">Awaiting confirmation</string>
+    <string name="key_panel_official">Open DeepSeek Platform</string>
+    <string name="key_panel_harness">Platform-managed</string>
+    <string name="key_panel_review">Review this action on DeepSeek</string>
+    <string name="key_panel_verify">Open identity verification</string>
+    <string name="key_panel_verify_detail">Verify your identity to create a key.</string>
+    <string name="key_panel_expand">%1$s, show details</string>
+    <string name="key_panel_collapse">%1$s, hide details</string>
+</resources>

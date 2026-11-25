@@ -1,0 +1,93 @@
+import { useRef, useState } from 'react'
+import { useSettings } from '../../services/settings.js'
+import { Button } from '../base/Button.js'
+import { platformUrls } from './OfficialPlatform.js'
+import styles from './Wallet.module.css'
+
+export const presets = ['10', '50', '100'] as const
+const copy = {
+  'zh-CN': {
+    title: '余额与充值', customChoice: '自定义', details: '余额明细', transactions: '账单', refreshing: '正在刷新…',
+    amount: '充值金额', custom: '自定义金额', unit: '人民币', copy: '复制金额', checkout: '前往官方收银台',
+    boundHint: '请在收银台登录此密钥所属的 DeepSeek 账户。',
+    signIn: '充值将计入收银台登录的 DeepSeek 账户。', keys: '绑定 API Key', back: '返回',
+    invalid: '请输入大于零的金额，最多两位小数。', overflow: '本机输入最多支持 12 位整数。',
+    copied: '已复制金额', copyFailed: '请选中金额后手动复制。',
+  },
+  'en-US': {
+    title: 'Balance and top-up', customChoice: 'Custom', details: 'Balance details', transactions: 'Bills', refreshing: 'Refreshing…',
+    amount: 'Top-up amount', custom: 'Custom amount', unit: 'CNY', copy: 'Copy amount', checkout: 'Open official checkout',
+    boundHint: 'Use the DeepSeek account that owns this key at checkout.',
+    signIn: 'Funds go to the DeepSeek account signed in at checkout.', keys: 'Connect API key', back: 'Back',
+    invalid: 'Enter a positive amount with up to two decimal places.', overflow: 'This field supports up to 12 whole-number digits.',
+    copied: 'Amount copied', copyFailed: 'Select the amount to copy it manually.',
+  },
+}
+export const useFundingText = () => useSettings(s => copy[s.locale])
+
+// String arithmetic preserves cents and never rounds or accepts scientific notation.
+export function parseAmount(raw: string): { amount?: string; error?: 'invalid' | 'overflow' } {
+  if (!raw.trim()) return {}
+  if (raw.length > 64) return { error: 'overflow' }
+  const value = raw.trim().normalize('NFKC')
+  if (!/^(?:\d+(?:\.\d{0,2})?|\.\d{1,2})$/.test(value)) return { error: 'invalid' }
+  const [integer, cents = ''] = value.split('.')
+  const whole = integer.replace(/^0+/, '') || '0'
+  if (whole.length > 12) return { error: 'overflow' }
+  const amount = whole + '.' + cents.padEnd(2, '0')
+  return amount === '0.00' ? { error: 'invalid' } : { amount }
+}
+
+type Choice = (typeof presets)[number] | 'custom' | null
+
+export function FundingForm({ accountHint, largeType }: { accountHint: string; largeType: boolean }) {
+  const text = useFundingText()
+  const [choice, setChoice] = useState<Choice>(null)
+  const [draft, setDraft] = useState('')
+  const [feedback, setFeedback] = useState<'copied' | 'copyFailed' | null>(null)
+  const input = useRef<HTMLInputElement>(null)
+  const { amount, error } = parseAmount(choice === 'custom' ? draft : choice ?? '')
+  const choose = (next: Choice) => {
+    setChoice(next)
+    setFeedback(null)
+    if (next === 'custom') input.current?.focus()
+  }
+  const copyAmount = async () => {
+    if (!amount) return
+    try {
+      await navigator.clipboard.writeText(amount)
+      setFeedback('copied')
+    } catch {
+      input.current?.select()
+      setFeedback('copyFailed')
+    }
+  }
+  return <section className={styles.funding} aria-labelledby="funding-title">
+    <header className={styles.formHeader}>
+      <h2 id="funding-title">{text.amount}</h2>
+      <button type="button" className={styles.copy} disabled={!amount} onClick={() => void copyAmount()}>{text.copy}</button>
+    </header>
+    <div role="group" aria-labelledby="funding-title" className={styles.presets} data-large-type={largeType}>
+      {presets.map(item => <button type="button" key={item} aria-pressed={choice === item}
+        onClick={() => choose(item)}>¥{item}</button>)}
+      <button type="button" aria-pressed={choice === 'custom'} onClick={() => choose('custom')}>{text.customChoice}</button>
+    </div>
+    {choice === 'custom' && <label className={styles.field}>
+      <input ref={input} autoFocus type="text" aria-label={text.custom} inputMode="decimal" autoComplete="off"
+        value={draft} placeholder="0.00" aria-invalid={Boolean(error)} aria-describedby={error ? 'funding-error' : undefined}
+        onChange={event => { setDraft(event.target.value); setFeedback(null) }} /><small>{text.unit}</small>
+    </label>}
+    {error && <p id="funding-error" className={styles.invalid} role="alert">{text[error]}</p>}
+    <div className={styles.actions}>
+      {amount
+        ? <a href={platformUrls.topUp} target="_blank" rel="noopener noreferrer" className={styles.topUp}>
+            {text.checkout} · ¥{amount.replace(/\.00$/, '')}
+          </a>
+        : <Button disabled block size="m">{text.checkout}</Button>}
+    </div>
+    {amount && <p className={styles.hint}>{accountHint}</p>}
+    {feedback && <p role="status" className={styles.hint}>
+      {text[feedback]} {feedback === 'copyFailed' && choice !== 'custom' && <span className={styles.manualCopy}>{amount}</span>}
+    </p>}
+  </section>
+}

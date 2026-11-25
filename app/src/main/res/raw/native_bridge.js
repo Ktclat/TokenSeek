@@ -10,13 +10,47 @@
       attributeFilter: ['data-ds-dark-theme']
     });
     syncTheme();
+    if (typeof host.setDrawerGesture === 'function') {
+      const syncEdge = () => host.setDrawerGesture(token, document.body.hasAttribute('data-tokenseek-drawer-gesture'));
+      new MutationObserver(syncEdge).observe(document.body, { attributes: true, attributeFilter: ['data-tokenseek-drawer-gesture'] });
+      syncEdge();
+    }
   }, { once: true });
 
+  Object.defineProperty(window, 'tokenSeekSetWorkspace', {
+    value: id => host.setWorkspace?.(token, id)
+  });
   Object.defineProperty(window, 'TokenSeekSecrets', {
     value: Object.freeze({
-      manageKeys: (action, id, name, secret) => host.manageKeys(token, action, id, name, secret)
+      manageKeys: (action, id, name, secret) => host.manageKeys(token, action, id, name, secret),
+      manageProfileKeys: (profile, action, id, name, secret) =>
+        typeof host.manageProfileKeys === 'function'
+          ? host.manageProfileKeys(token, profile, action, id, name, secret)
+          : profile === 'default' ? host.manageKeys(token, action, id, name, secret) : ''
     })
   });
+
+  if (typeof host.showPreferences === 'function' && typeof host.scaleText === 'function') {
+    Object.defineProperty(window, 'TokenSeekSettings', {
+      value: Object.freeze({
+        present: screen => host.showPreferences(token, screen),
+        setTextScale: percent => host.scaleText(token, percent)
+      })
+    });
+  }
+  if (typeof host.showChatKeys === 'function') {
+    Object.defineProperty(window, 'tokenSeekShowChatKeys', {
+      value: screen => host.showChatKeys(token, screen)
+    });
+  }
+  if (typeof host.showFunding === 'function') {
+    Object.defineProperty(window, 'TokenSeekFunding', {
+      value: Object.freeze({
+        present: screen => host.showFunding(token, screen),
+        checkout: typeof host.openFunding === 'function' ? amount => host.openFunding(token, amount) : undefined
+      })
+    });
+  }
 
   Object.defineProperty(window, 'tokenSeekHandleBack', {
     value: () => {

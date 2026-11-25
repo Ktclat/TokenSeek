@@ -1,6 +1,8 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
-import { isKeyPreview, type SavedKey } from '../../services/keyRing.js'
+import { isKeyPreview, listProfileKeys, type SavedKey } from '../../services/keyRing.js'
 import { changeKey, useSettings } from '../../services/settings.js'
+import { switchProfile, useCurrentProfile, useProfiles, type Profile } from '../../services/profiles.js'
+import { useProfileText } from './ProfileSettings.js'
 import { Button } from '../base/Button.js'
 import { keyInputFocused, useSettingsDialog } from './settingsDialogState.js'
 import { OfficialKeysLink } from './OfficialPlatform.js'
@@ -108,9 +110,36 @@ function KeyRow({ entry, active, editing, toggle }: { entry: SavedKey; active: b
   )
 }
 
+function OtherProfileKeys({ profile }: { profile: Profile }) {
+  const copy = useProfileText()
+  const keyText = useCopy()
+  const [open, setOpen] = useState(false)
+  const ring = open ? listProfileKeys(profile.id) : null
+  const [error, setError] = useState(false)
+  return <section className={styles.otherGroup}>
+    <button type="button" aria-expanded={open} onClick={() => setOpen(!open)}>
+      <span>{profile.nickname}<small>@{profile.username}</small></span>
+      <span aria-hidden="true">{open ? '−' : '+'}</span>
+    </button>
+    {open && <div className={styles.otherList}>
+      {!ring && <p>{copy.keysUnavailable}</p>}
+      {ring && (ring.entries.length
+        ? <ul>{ring.entries.map(key => <li key={key.id}>
+            <strong>{key.name || 'API Key'}</strong><small>•••• {key.suffix} {key.id === ring.activeId && '· ' + keyText.active}</small>
+          </li>)}</ul>
+        : <p>{copy.noKeys}</p>)}
+      <Button variant="outlined" size="s" onClick={async () => setError(!await switchProfile(profile.id, 'keys'))}>{copy.switchAndManage}</Button>
+      {error && <p role="alert">{copy.switchError}</p>}
+    </div>}
+  </section>
+}
+
 export function AccountKey() {
   const copy = useCopy()
   const ring = useSettings(state => state.keyRing)
+  const current = useCurrentProfile()
+  const profiles = useProfiles(state => state.profiles)
+  const profileText = useProfileText()
   const focusRequested = useSettingsDialog(state => state.focusNewKey)
   const [adding, setAdding] = useState(focusRequested)
   const [editing, setEditing] = useState<string | null>(null)
@@ -123,8 +152,8 @@ export function AccountKey() {
   return (
     <>
       <div className={styles.platform}><OfficialKeysLink /></div>
+      <h2 className={pages.sectionLabel}>{profileText.ownKeys} · {current.nickname}</h2>
       {ring.entries.length > 0 && <>
-        <h2 className={pages.sectionLabel}>{copy.keys}</h2>
         <ul className={styles.list}>{ring.entries.map(entry => (
           <KeyRow key={entry.id} entry={entry} active={entry.id === ring.activeId} editing={editing === entry.id}
             toggle={() => { setAdding(false); setEditing(editing === entry.id ? null : entry.id) }} />
@@ -136,6 +165,10 @@ export function AccountKey() {
             <NewKey focusRequested={focusRequested} cancel={ring.entries.length ? () => setAdding(false) : undefined} />
           </>
         : <Button variant="outlined" onClick={() => { setEditing(null); setAdding(true) }}>{copy.add}</Button>}
+      {profiles.length > 1 && <>
+        <h2 className={styles.otherHeading}>{profileText.otherKeys}</h2>
+        {profiles.filter(profile => profile.id !== current.id).map(profile => <OtherProfileKeys key={profile.id} profile={profile} />)}
+      </>}
       {isKeyPreview() && <p className={pages.hint}>{copy.preview}</p>}
     </>
   )

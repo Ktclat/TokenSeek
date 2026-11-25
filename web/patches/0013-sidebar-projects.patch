@@ -1,0 +1,755 @@
+diff --git a/src/components/base/Menu.module.css b/src/components/base/Menu.module.css
+index b38cb19..9be114b 100644
+--- a/src/components/base/Menu.module.css
++++ b/src/components/base/Menu.module.css
+@@ -17,6 +17,12 @@
+ }
+ 
+ .option {
++  width: 100%;
++  border: 0;
++  background: transparent;
++  color: inherit;
++  font: inherit;
++  text-align: start;
+   display: flex;
+   align-items: center;
+   gap: 8px;
+diff --git a/src/components/base/Menu.tsx b/src/components/base/Menu.tsx
+index 7f02416..913379d 100644
+--- a/src/components/base/Menu.tsx
++++ b/src/components/base/Menu.tsx
+@@ -1,5 +1,5 @@
+ import clsx from 'clsx'
+-import { useState, type ReactNode } from 'react'
++import { useEffect, useState, type ReactNode } from 'react'
+ import { createPortal } from 'react-dom'
+ import { useAnchoredPosition, useDismiss } from './anchored.js'
+ import styles from './Menu.module.css'
+@@ -28,6 +28,16 @@ export const Menu = ({
+     { align: 'start', alignOffset: -5, offset: 4 }
+   )
+   useDismiss(open, [anchorRef, floatingRef], close)
++  useEffect(() => {
++    if (!open) return
++    const onBack = (event: Event) => {
++      event.preventDefault()
++      event.stopImmediatePropagation()
++      setOpen(false)
++    }
++    window.addEventListener('tokenseek:back', onBack, true)
++    return () => window.removeEventListener('tokenseek:back', onBack, true)
++  }, [open])
+ 
+   return (
+     <>
+@@ -43,7 +53,7 @@ export const Menu = ({
+               role="menu"
+             >
+               {options.map((option) => (
+-                <div
++                <button type="button"
+                   key={option.key}
+                   role="menuitem"
+                   className={clsx(styles.option, option.danger && styles.danger)}
+@@ -54,7 +64,7 @@ export const Menu = ({
+                 >
+                   <span className={styles.icon}>{option.icon}</span>
+                   {option.label}
+-                </div>
++                </button>
+               ))}
+             </div>,
+             document.body
+diff --git a/src/components/sider/CollapsedSider.tsx b/src/components/sider/CollapsedSider.tsx
+index e4bc1b5..0bc006e 100644
+--- a/src/components/sider/CollapsedSider.tsx
++++ b/src/components/sider/CollapsedSider.tsx
+@@ -1,31 +1,13 @@
+-import { IconPanelLeftOutline16, NewChatIcon } from '../base/icons.js'
++import { IconPanelLeftOutline16 } from '../base/icons.js'
+ import { useTranslate } from '../../i18n/index.js'
+ import { setSiderCollapsed } from '../../services/settings.js'
+-import { newChat } from '../../services/chat/store.js'
+ import { IconButton } from '../base/IconButton.js'
+ import styles from './Sider.module.css'
+ 
+-/** 收起后左上角的按钮组 */
+ export const CollapsedSider = () => {
+   const t = useTranslate()
+-  return (
+-    <div className={styles.collapsed}>
+-      <div className={styles.collapsedGroup}>
+-        <IconButton
+-          size="m"
+-          tone="primary"
+-          icon={<IconPanelLeftOutline16 />}
+-          tooltip={t('expandSiderbarButton')}
+-          onClick={() => setSiderCollapsed(false)}
+-        />
+-        <IconButton
+-          size="m"
+-          tone="primary"
+-          icon={<NewChatIcon />}
+-          tooltip={t('newChat')}
+-          onClick={newChat}
+-        />
+-      </div>
+-    </div>
+-  )
++  return <div className={styles.collapsed}><div className={styles.collapsedGroup}>
++    <IconButton size="m" tone="primary" icon={<IconPanelLeftOutline16/>} tooltip={t('expandSiderbarButton')}
++      onClick={() => setSiderCollapsed(false)} />
++  </div></div>
+ }
+diff --git a/src/components/sider/SessionItem.module.css b/src/components/sider/SessionItem.module.css
+index 6ccb2cf..bb976ff 100644
+--- a/src/components/sider/SessionItem.module.css
++++ b/src/components/sider/SessionItem.module.css
+@@ -21,6 +21,7 @@
+       background-color: var(--dsw-specific-sidebar-nav-item-hover);
+     }
+ 
++    &:focus-within,
+     &:hover,
+     &.active {
+       .action {
+@@ -31,6 +32,14 @@
+ }
+ 
+ .title {
++  border: 0;
++  padding: 0;
++  align-self: stretch;
++  background: transparent;
++  text-align: start;
++  color: inherit;
++  font: inherit;
++  cursor: pointer;
+   flex: 1;
+   min-width: 0;
+   overflow: hidden;
+diff --git a/src/components/sider/SessionItem.tsx b/src/components/sider/SessionItem.tsx
+index c50dd62..d8e923e 100644
+--- a/src/components/sider/SessionItem.tsx
++++ b/src/components/sider/SessionItem.tsx
+@@ -1,84 +1,57 @@
+ import clsx from 'clsx'
+ import { memo, useState } from 'react'
+ import { useTranslate } from '../../i18n/index.js'
+-import { IconEditOutline16, IconEllipsisOutline16, IconTrashOutline16 } from '../base/icons.js'
++import { downloadSession } from '../../services/chat/backup.js'
++import { moveSession, setPinned } from '../../services/chat/organization.js'
+ import { renameSession, selectSession } from '../../services/chat/store.js'
+ import type { SessionSummary } from '../../services/chat/types.js'
+ import { IconButton } from '../base/IconButton.js'
++import { IconDownloadOutline16, IconEditOutline16, IconEllipsisOutline16, IconTrashOutline16 } from '../base/icons.js'
+ import { Menu } from '../base/Menu.js'
++import { showToast } from '../base/toastState.js'
+ import { closeMobileSider } from './mobileSiderState.js'
++import { useOrganizationText } from './organizationText.js'
++import type { SidebarDialog } from './ProjectDialog.js'
++import { SiderIcon } from './SiderIcon.js'
+ import styles from './SessionItem.module.css'
+ 
+-export const SessionItem = memo(function SessionItem({
+-  session,
+-  active,
+-  onDelete,
+-}: {
+-  session: SessionSummary
+-  active: boolean
+-  onDelete: () => void
++export const SessionItem = memo(function SessionItem({ session, active, pinned, inProject, organize, onDialog }: {
++  session: SessionSummary; active: boolean; pinned: boolean; inProject: boolean; organize: boolean
++  onDialog: (dialog: SidebarDialog) => void
+ }) {
+   const t = useTranslate()
++  const copy = useOrganizationText()
+   const [editing, setEditing] = useState(false)
+   const displayTitle = session.title || t('untitledChat')
+-
++  const attempt = (work: Promise<unknown>) => { void work.catch(() => showToast(copy.error)) }
+   if (editing) {
+     const finish = (title: string) => {
+       setEditing(false)
+-      if (title.trim() && title.trim() !== displayTitle) {
+-        renameSession(session.id, title.trim())
+-      }
++      if (title.trim() && title.trim() !== displayTitle) renameSession(session.id, title.trim())
+     }
+-    return (
+-      <input
+-        className={styles.renameInput}
+-        defaultValue={displayTitle}
+-        autoFocus
+-        onFocus={(event) => event.target.select()}
+-        onBlur={(event) => finish(event.target.value)}
+-        onKeyDown={(event) => {
+-          if (event.key === 'Enter' && !event.nativeEvent.isComposing) {
+-            finish(event.currentTarget.value)
+-          } else if (event.key === 'Escape') {
+-            setEditing(false)
+-          }
+-        }}
+-      />
+-    )
++    return <input className={styles.renameInput} defaultValue={displayTitle} autoFocus
++      onFocus={e => e.target.select()} onBlur={e => finish(e.target.value)} onKeyDown={e => {
++        if (e.key === 'Enter' && !e.nativeEvent.isComposing) finish(e.currentTarget.value)
++        else if (e.key === 'Escape') setEditing(false)
++      }} />
+   }
+-
+-  return (
+-    <div
+-      className={clsx(styles.item, active && styles.active)}
+-      onClick={() => {
+-        selectSession(session.id)
+-        closeMobileSider()
+-      }}
+-    >
+-      <div className={styles.title}>{displayTitle}</div>
+-      <div className={styles.action} onClick={(event) => event.stopPropagation()}>
+-        <Menu
+-          options={[
+-            {
+-              key: 'rename',
+-              label: t('sessionItemMenuRenameOption'),
+-              icon: <IconEditOutline16 />,
+-              onSelect: () => setEditing(true),
+-            },
+-            {
+-              key: 'delete',
+-              label: t('delete'),
+-              icon: <IconTrashOutline16 />,
+-              danger: true,
+-              onSelect: onDelete,
+-            },
+-          ]}
+-        >
+-          {({ toggle }) => (
+-            <IconButton icon={<IconEllipsisOutline16 />} aria-label={t('more')} onClick={toggle} />
+-          )}
+-        </Menu>
+-      </div>
++  return <div className={clsx(styles.item, active && styles.active)}>
++    <button type="button" className={styles.title} aria-current={active ? 'page' : undefined} title={displayTitle}
++      onClick={() => { selectSession(session.id); closeMobileSider() }}>{displayTitle}</button>
++    {inProject && pinned && <span aria-label={copy.pinned}><SiderIcon name="pin"/></span>}
++    <div className={styles.action}>
++      <Menu options={[
++        ...(organize ? [
++          { key: 'pin', label: pinned ? copy.unpin : copy.pin, icon: <SiderIcon name="pin"/>, onSelect: () => attempt(setPinned(session.id, !pinned)) },
++          { key: 'move', label: copy.move, icon: <SiderIcon name="folder"/>, onSelect: () => onDialog({ kind: 'move', sessionId: session.id }) },
++          ...(inProject ? [{ key: 'remove', label: copy.moveOut, icon: <SiderIcon name="folder"/>, onSelect: () => attempt(moveSession(session.id, null)) }] : []),
++        ] : []),
++        { key: 'rename', label: t('sessionItemMenuRenameOption'), icon: <IconEditOutline16/>, onSelect: () => setEditing(true) },
++        { key: 'export', label: copy.exportChat, icon: <IconDownloadOutline16/>, onSelect: () => attempt(downloadSession(session.id)) },
++        { key: 'delete', label: t('delete'), icon: <IconTrashOutline16/>, danger: true, onSelect: () => onDialog({ kind: 'deleteSession', sessionId: session.id }) },
++      ]}>{({ open, toggle }) => <IconButton icon={<IconEllipsisOutline16/>} aria-label={`${t('more')} · ${displayTitle}`}
++        aria-haspopup="menu" aria-expanded={open} onClick={toggle}/>}
++      </Menu>
+     </div>
+-  )
++  </div>
+ })
+diff --git a/src/components/sider/Sider.module.css b/src/components/sider/Sider.module.css
+index 45fd645..b738082 100644
+--- a/src/components/sider/Sider.module.css
++++ b/src/components/sider/Sider.module.css
+@@ -17,7 +17,7 @@
+   gap: 8px;
+   box-sizing: border-box;
+   height: 48px;
+-  margin-bottom: 16px;
++  margin-bottom: 4px;
+   padding: 15px 0 10px 4px;
+   flex-shrink: 0;
+ }
+@@ -34,56 +34,11 @@
+   color: var(--dsw-alias-brand-primary);
+ }
+ 
+-.newChat {
+-  position: relative;
+-  display: flex;
+-  align-items: center;
+-  justify-content: center;
+-  flex-shrink: 0;
+-  box-sizing: border-box;
+-  width: 100%;
+-  height: 40px;
+-  padding: 0 16px;
+-  border-radius: 100px;
+-  border: 1px solid rgba(103, 158, 254, 0);
+-  background: var(--dsw-alias-button-elevated-fill);
+-  color: var(--dsw-alias-label-primary);
+-  font: inherit;
+-  font-size: 14px;
+-  font-weight: 500;
+-  cursor: pointer;
+-  user-select: none;
+-  box-shadow:
+-    0 -2px 2px rgba(72, 104, 178, 0.04),
+-    0 2px 2px rgba(106, 111, 117, 0.09),
+-    0 1px 2px rgba(72, 104, 178, 0.08);
+-  transition: box-shadow 0.3s ease;
+-
+-  &:hover {
+-    box-shadow:
+-      0 4px 4px 0 rgba(72, 104, 178, 0.04),
+-      0 -3px 4px 0 rgba(72, 104, 178, 0.04),
+-      0 6px 6px 0 rgba(106, 111, 117, 0.1);
+-  }
+-
+-  [data-ds-dark-theme] & {
+-    border: none;
+-    box-shadow:
+-      inset 0 1px 1px rgba(255, 255, 255, 0.1),
+-      0 2px 4px rgba(106, 111, 117, 0.08);
+-  }
+-}
+-
+-.newChatIcon {
+-  display: flex;
+-  margin-right: 6px;
+-}
+-
+ .listWrap {
+   position: relative;
+   flex: 1;
+   min-height: 0;
+-  margin-top: 24px;
++  margin: 0 0 8px;
+ }
+ 
+ .list {
+@@ -104,73 +59,6 @@
+   }
+ }
+ 
+-.sectionHeader {
+-  position: sticky;
+-  top: 0;
+-  z-index: 20;
+-  padding: 2px 10px;
+-  font-size: 12px;
+-  line-height: 18px;
+-  font-weight: 500;
+-  color: var(--dsw-alias-label-tertiary);
+-  background-color: var(--dsw-specific-sidebar-fill);
+-  user-select: none;
+-}
+-
+-.bottom {
+-  display: grid;
+-  grid-template-columns: minmax(0, 1fr) auto auto;
+-  align-items: center;
+-  column-gap: 2px;
+-  flex-shrink: 0;
+-  height: 64px;
+-}
+-
+-.settings {
+-  display: flex;
+-  align-items: center;
+-  box-sizing: border-box;
+-  width: 100%;
+-  margin-block: auto;
+-  padding: 6px 2px 6px 6px;
+-  border: none;
+-  border-radius: 12px;
+-  background: none;
+-  font: inherit;
+-  text-align: left;
+-  cursor: pointer;
+-  user-select: none;
+-  outline: none;
+-
+-  &:hover {
+-    background-color: var(--dsw-specific-sidebar-nav-item-hover);
+-  }
+-
+-  &:focus-visible {
+-    box-shadow: inset 0 0 0 2px var(--dsw-alias-button-primary-fill);
+-  }
+-}
+-
+-.settingsIcon {
+-  display: flex;
+-  align-items: center;
+-  justify-content: center;
+-  flex-shrink: 0;
+-  width: 32px;
+-  height: 32px;
+-  color: var(--dsw-alias-label-primary);
+-}
+-
+-.settingsLabel {
+-  min-width: 0;
+-  margin-left: 4px;
+-  overflow: hidden;
+-  font-size: 14px;
+-  white-space: nowrap;
+-  text-overflow: ellipsis;
+-  color: var(--dsw-alias-label-primary);
+-}
+-
+ .collapsed {
+   position: absolute;
+   top: 0;
+@@ -195,56 +83,8 @@
+   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.04);
+ }
+ 
+-.drawer {
+-  position: absolute;
+-  top: 0;
+-  bottom: 0;
+-  left: 0;
+-  z-index: 800;
+-}
+-
+-.drawerMask {
+-  position: absolute;
+-  inset: 0;
+-  z-index: 799;
+-}
+ 
+ .mobile {
+-  width: 300px;
+-  max-width: calc(100vw - 48px);
+-
+-  .listWrap {
+-    margin-top: 16px;
+-  }
+-
+-  .sectionHeader {
+-    padding: 4px 10px 3px;
+-    font-size: 14px;
+-    line-height: 22px;
+-  }
+-
+-  .bottom {
+-    height: auto;
+-    padding: 12px 0;
+-  }
+-
+-  .settings {
+-    padding: 9px 10px;
+-  }
+-
+-  .settingsIcon {
+-    width: auto;
+-    height: auto;
+-
+-    svg {
+-      width: 20px;
+-      height: 20px;
+-    }
+-  }
+-
+-  .settingsLabel {
+-    margin-left: 10px;
+-    font-size: 16px;
+-    line-height: 22px;
+-  }
++  width: min(304px, calc(100vw - 48px));
++  padding-top: env(safe-area-inset-top);
+ }
+diff --git a/src/components/sider/Sider.module.css.d.ts b/src/components/sider/Sider.module.css.d.ts
+index 9a5bde3..a4b41f7 100644
+--- a/src/components/sider/Sider.module.css.d.ts
++++ b/src/components/sider/Sider.module.css.d.ts
+@@ -2,20 +2,11 @@ declare const styles: {
+   readonly "sider": string;
+   readonly "top": string;
+   readonly "appName": string;
+-  readonly "newChat": string;
+-  readonly "newChatIcon": string;
+   readonly "listWrap": string;
+   readonly "list": string;
+   readonly "section": string;
+-  readonly "sectionHeader": string;
+-  readonly "bottom": string;
+-  readonly "settings": string;
+-  readonly "settingsIcon": string;
+-  readonly "settingsLabel": string;
+   readonly "collapsed": string;
+   readonly "collapsedGroup": string;
+-  readonly "drawer": string;
+-  readonly "drawerMask": string;
+   readonly "mobile": string;
+ };
+ export = styles;
+diff --git a/src/components/sider/Sider.tsx b/src/components/sider/Sider.tsx
+index 65d3fcc..fcaf9ef 100644
+--- a/src/components/sider/Sider.tsx
++++ b/src/components/sider/Sider.tsx
+@@ -1,174 +1,96 @@
+ import clsx from 'clsx'
+ import { useEffect, useMemo, useState } from 'react'
+ import { useTranslate } from '../../i18n/index.js'
+-import { IconPanelLeftOutline16, IconSettingsOutline16, NewChatIcon } from '../base/icons.js'
++import { IconChevronDownOutline14, IconChevronRightOutline14, IconEditOutline16, IconEllipsisOutline16, IconPanelLeftOutline16, IconTrashOutline16 } from '../base/icons.js'
+ import { setSiderCollapsed } from '../../services/settings.js'
+-import { groupSessions } from '../../services/chat/sessionGroups.js'
+-import { newChat, removeSession, useChatStore } from '../../services/chat/store.js'
++import { useChatStore } from '../../services/chat/store.js'
+ import type { SessionSummary } from '../../services/chat/types.js'
+-import { Button } from '../base/Button.js'
++import { refreshOrganization, useOrganization } from '../../services/chat/organization.js'
+ import { IconButton } from '../base/IconButton.js'
+-import { Modal } from '../base/Modal.js'
+-import { showToast } from '../base/toastState.js'
+-import { WalletIcon } from '../settings/Wallet.js'
+-import { AccountIcon, useAccountText } from '../settings/AccountFlow.js'
+-import { openSettings } from '../settings/settingsDialogState.js'
+-import { closeMobileSider, useMobileSider } from './mobileSiderState.js'
++import { Menu } from '../base/Menu.js'
++import { closeMobileSider } from './mobileSiderState.js'
++import { SidebarAccount } from './SidebarAccount.js'
++import { ProjectDialog, type SidebarDialog } from './ProjectDialog.js'
+ import { SessionItem } from './SessionItem.js'
++import { SiderIcon } from './SiderIcon.js'
++import { useOrganizationText } from './organizationText.js'
+ import styles from './Sider.module.css'
++import extras from './SidebarExtras.module.css'
+ 
+-/** 展开的侧边栏：名称与收起按钮、开启新对话、按时间分组的会话列表、底部设置；移动端放在抽屉里，收起按钮关闭抽屉 */
+-export const Sider = ({ mobile = false }: { mobile?: boolean }) => {
+-  const t = useTranslate()
+-  const account = useAccountText()
+-  const sessions = useChatStore((state) => state.sessions)
+-  const activeId = useChatStore((state) => state.activeId)
+-  const [now, setNow] = useState(Date.now)
+-  const groups = useMemo(() => groupSessions(sessions, now, t), [sessions, now, t])
+-  const [deleting, setDeleting] = useState<SessionSummary | null>(null)
+-  const [deletePending, setDeletePending] = useState(false)
++export { MobileSider } from './MobileDrawer.js'
+ 
+-  useEffect(() => {
+-    let timer: ReturnType<typeof setTimeout>
+-    const refresh = () => {
+-      clearTimeout(timer)
+-      const time = Date.now()
+-      setNow(time)
+-      const midnight = new Date(time).setHours(24, 0, 0, 0)
+-      timer = setTimeout(refresh, midnight - time)
+-    }
+-    const onVisibilityChange = () => {
+-      if (document.visibilityState === 'visible') {
+-        refresh()
+-      }
+-    }
+-    refresh()
+-    document.addEventListener('visibilitychange', onVisibilityChange)
+-    window.addEventListener('focus', refresh)
+-    return () => {
+-      clearTimeout(timer)
+-      document.removeEventListener('visibilitychange', onVisibilityChange)
+-      window.removeEventListener('focus', refresh)
++export function Sider({ mobile = false }: { mobile?: boolean }) {
++  const t = useTranslate()
++  const copy = useOrganizationText()
++  const sessions = useChatStore(state => state.sessions)
++  const activeId = useChatStore(state => state.activeId)
++  const importing = useChatStore(state => state.importingHistory)
++  const { data, status } = useOrganization()
++  const [dialog, setDialog] = useState<SidebarDialog | null>(null)
++  const [expanded, setExpanded] = useState<Set<string>>(() => new Set())
++  useEffect(() => { void refreshOrganization() }, [])
++  const reveal = (id: string) => setExpanded(previous => new Set(previous).add(id))
++  const toggle = (id: string) => setExpanded(previous => {
++    const next = new Set(previous)
++    if (next.has(id)) next.delete(id)
++    else next.add(id)
++    return next
++  })
++  const { byProject, pinnedIds, pinned, recent } = useMemo(() => {
++    const pinnedIds = new Set(data.pinned)
++    const byProject = new Map<string, SessionSummary[]>(data.projects.map(p => [p.id, []]))
++    const recent: SessionSummary[] = []
++    const byId = new Map(sessions.map(session => [session.id, session]))
++    const pinned = data.pinned.flatMap(id => {
++      const session = byId.get(id)
++      return session && !byProject.has(data.assignments[id]) ? [session] : []
++    })
++    for (const session of sessions) {
++      const bucket = byProject.get(data.assignments[session.id])
++      if (bucket) bucket.push(session)
++      else if (!pinnedIds.has(session.id)) recent.push(session)
+     }
+-  }, [])
+-
+-  return (
+-    <div className={clsx(styles.sider, mobile && styles.mobile)}>
+-      <div className={styles.top}>
+-        <div className={styles.appName}>{t('appName')}</div>
+-        <IconButton
+-          size="m"
+-          icon={<IconPanelLeftOutline16 />}
+-          tooltip={t('collapseSiderbarButton')}
+-          tooltipPlacement="bottom"
+-          onClick={() => (mobile ? closeMobileSider() : setSiderCollapsed(true))}
+-        />
+-      </div>
+-      <button
+-        type="button"
+-        className={styles.newChat}
+-        onClick={() => {
+-          newChat()
+-          closeMobileSider()
+-        }}
+-      >
+-        <span className={styles.newChatIcon}>
+-          <NewChatIcon />
+-        </span>
+-        {t('newChat')}
+-      </button>
+-      <div className={styles.listWrap}>
+-        <div className={styles.list}>
+-          {groups.map((group) => (
+-            <div key={group.key} className={styles.section}>
+-              <div className={styles.sectionHeader}>{group.label}</div>
+-              {group.sessions.map((session) => (
+-                <SessionItem
+-                  key={session.id}
+-                  session={session}
+-                  active={session.id === activeId}
+-                  onDelete={() => setDeleting(session)}
+-                />
+-              ))}
+-            </div>
+-          ))}
+-        </div>
+-      </div>
+-      <div className={styles.bottom}>
+-        <button type="button" className={styles.settings} onClick={() => {
+-          closeMobileSider()
+-          openSettings('account')
+-        }}>
+-          <span className={styles.settingsIcon}><AccountIcon /></span>
+-          <span className={styles.settingsLabel}>{account.title}</span>
+-        </button>
+-        <button type="button" className={styles.settings} onClick={() => {
+-          closeMobileSider()
+-          openSettings('wallet')
+-        }}>
+-          <span className={styles.settingsIcon}><WalletIcon /></span>
+-          <span className={styles.settingsLabel}>{t('wallet')}</span>
+-        </button>
+-        <IconButton size="xl" tone="primary" icon={<IconSettingsOutline16 />} tooltip={t('settings')}
+-          onClick={() => {
+-            closeMobileSider()
+-            openSettings('home')
+-          }}
+-        />
+-      </div>
+-      {deleting ? (
+-        <Modal
+-          title={t('deleteSessionModalContentTitle')}
+-          onClose={() => {
+-            if (!deletePending) {
+-              setDeleting(null)
+-            }
+-          }}
+-          footer={
+-            <>
+-              <Button variant="outlined" disabled={deletePending} onClick={() => setDeleting(null)}>
+-                {t('cancel')}
+-              </Button>
+-              <Button
+-                variant="danger"
+-                disabled={deletePending}
+-                onClick={async () => {
+-                  setDeletePending(true)
+-                  try {
+-                    if (await removeSession(deleting.id)) {
+-                      setDeleting(null)
+-                    } else {
+-                      showToast({ key: 'sessionDeleteFailed', type: 'error' })
+-                    }
+-                  } finally {
+-                    setDeletePending(false)
+-                  }
+-                }}
+-              >
+-                {t('delete')}
+-              </Button>
+-            </>
+-          }
+-        >
+-          {t('deleteSessionWithFilesDescription')}
+-        </Modal>
+-      ) : null}
++    for (const group of byProject.values()) group.sort((a, b) => Number(pinnedIds.has(b.id)) - Number(pinnedIds.has(a.id)))
++    return { byProject, pinnedIds, pinned, recent }
++  }, [sessions, data])
++  const row = (s: SessionSummary, inProject = false) => <SessionItem key={s.id} session={s} active={s.id === activeId}
++    pinned={pinnedIds.has(s.id)} inProject={inProject} organize={status === 'ready' && !importing} onDialog={setDialog}/>
++  return <nav className={clsx(styles.sider, mobile && styles.mobile)} aria-label={t('appName')}>
++    <div className={styles.top}>
++      <div className={styles.appName}>{t('appName')}</div>
++      <IconButton size="m" icon={<IconPanelLeftOutline16/>} tooltip={t('collapseSiderbarButton')} tooltipPlacement="bottom"
++        onClick={() => mobile ? closeMobileSider() : setSiderCollapsed(true)}/>
+     </div>
+-  )
+-}
+-
+-/** 移动端抽屉：浮在页面上方，点空白区域关闭。 */
+-export const MobileSider = () => {
+-  const open = useMobileSider((state) => state.open)
+-  if (!open) {
+-    return null
+-  }
+-  return (
+-    <>
+-      <div className={styles.drawerMask} onClick={closeMobileSider} />
+-      <div className={styles.drawer}>
+-        <Sider mobile />
+-      </div>
+-    </>
+-  )
++    <div className={styles.listWrap}><div className={styles.list}>
++      {status === 'error' && <button type="button" className={extras.retry} onClick={() => void refreshOrganization()}>{copy.loadError} · {t('retry')}</button>}
++      {pinned.length > 0 && <section className={styles.section} aria-label={copy.pinned}>
++        <h2 className={extras.heading}>{copy.pinned}</h2>{pinned.map(s => row(s))}
++      </section>}
++      <section className={styles.section} aria-label={copy.projects}>
++        <div className={extras.sectionBar}><h2 className={extras.heading}>{copy.projects}</h2>
++          <IconButton size="m" icon={<SiderIcon name="add"/>} aria-label={copy.create} disabled={status !== 'ready' || importing}
++            onClick={() => setDialog({ kind: 'create' })}/></div>
++        {data.projects.map(p => <div key={p.id}>
++          <div className={extras.projectRow}>
++            <button type="button" className={extras.projectToggle} aria-expanded={expanded.has(p.id)} onClick={() => toggle(p.id)}>
++              <SiderIcon name="folder"/><span>{p.name}</span>{expanded.has(p.id) ? <IconChevronDownOutline14/> : <IconChevronRightOutline14/>}
++            </button>
++            <Menu options={[
++              { key: 'rename', label: copy.rename, icon: <IconEditOutline16/>, onSelect: () => setDialog({ kind: 'rename', project: p }) },
++              { key: 'delete', label: copy.remove, icon: <IconTrashOutline16/>, danger: true, onSelect: () => setDialog({ kind: 'deleteProject', project: p }) },
++            ]}>{({ toggle: show, open }) => <IconButton icon={<IconEllipsisOutline16/>} disabled={importing} aria-label={`${t('more')} · ${p.name}`}
++              aria-haspopup="menu" aria-expanded={open} onClick={show}/>}</Menu>
++          </div>
++          {expanded.has(p.id) && <div className={extras.projectContents}>{byProject.get(p.id)?.length
++            ? byProject.get(p.id)!.map(s => row(s, true)) : <p className={extras.empty}>{copy.empty}</p>}
++          </div>}
++        </div>)}
++      </section>
++      <section className={styles.section} aria-label={copy.recent}>
++        <h2 className={extras.heading}>{copy.recent}</h2>{recent.length ? recent.map(s => row(s)) : <p className={extras.empty}>{copy.empty}</p>}
++      </section>
++    </div></div>
++    <SidebarAccount/>
++    {dialog && <ProjectDialog key={dialog.kind} dialog={dialog} change={setDialog} close={() => setDialog(null)} reveal={reveal}/>}
++  </nav>
+ }
+diff --git a/src/app/App.tsx b/src/app/App.tsx
+--- a/src/app/App.tsx
++++ b/src/app/App.tsx
+@@ -70,3 +70,4 @@
+     const onBack = (event: Event) => {
+       if (useMobileSider.getState().open) {
++        if (event.defaultPrevented || document.querySelector('[role="menu"], [role="dialog"]')) return
+         closeMobileSider()

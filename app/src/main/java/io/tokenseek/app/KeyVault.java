@@ -65,12 +65,12 @@ final class KeyVault {
         return new JSONObject().put("id", id).put("name", name).put("secret", secret);
     }
 
-    private JSONObject load() throws Exception {
-        String ring = prefs.getString(RING, null);
+    private JSONObject load(String ringName, boolean useLegacy) throws Exception {
+        String ring = prefs.getString(ringName, null);
         if (ring != null) return new JSONObject(decrypt(ring));
         JSONArray entries = new JSONArray();
         JSONObject state = new JSONObject().put("entries", entries).put("activeId", "");
-        String legacy = prefs.getString(RECORD, null);
+        String legacy = useLegacy ? prefs.getString(RECORD, null) : null;
         if (legacy != null) {
             entries.put(entry("imported", "", decrypt(legacy)));
             state.put("activeId", "imported");
@@ -78,14 +78,17 @@ final class KeyVault {
         return state;
     }
 
-    private boolean save(JSONObject state) throws Exception {
-        // A single commit publishes the replacement ciphertext together with retirement of v0.2.
-        String previousRing = prefs.getString(RING, null);
-        String previousLegacy = prefs.getString(RECORD, null);
+    private boolean save(JSONObject state, String ringName, boolean useLegacy) throws Exception {
+        String previousRing = prefs.getString(ringName, null);
+        String previousLegacy = useLegacy ? prefs.getString(RECORD, null) : null;
         String next = state.getJSONArray("entries").length() == 0 ? null : encrypt(state.toString());
-        if (prefs.edit().remove(RECORD).putString(RING, next).commit()) return true;
+        SharedPreferences.Editor editor = prefs.edit().putString(ringName, next);
+        if (useLegacy) editor.remove(RECORD);
+        if (editor.commit()) return true;
         // Android can publish a failed commit to the in-process preferences map first.
-        prefs.edit().putString(RING, previousRing).putString(RECORD, previousLegacy).commit();
+        editor = prefs.edit().putString(ringName, previousRing);
+        if (useLegacy) editor.putString(RECORD, previousLegacy);
+        editor.commit();
         return false;
     }
 
@@ -136,38 +139,53 @@ final class KeyVault {
         }
     }
 
-    private static JSONObject snapshot(JSONObject state) throws Exception {
+    private static JSONObject snapshot(JSONObject state, boolean includeActiveKey) throws Exception {
         String active = state.getString("activeId");
         JSONArray entries = state.getJSONArray("entries");
         JSONArray visible = new JSONArray();
         JSONObject result = new JSONObject().put("entries", visible)
-                .put("activeId", active.isEmpty() ? JSONObject.NULL : active).put("apiKey", JSONObject.NULL);
+                .put("activeId", active.isEmpty() ? JSONObject.NULL : active);
+        if (includeActiveKey) result.put("apiKey", JSONObject.NULL);
         for (int i = 0; i < entries.length(); i++) {
             JSONObject item = entries.getJSONObject(i);
             String id = item.getString("id");
             String secret = item.getString("secret");
             visible.put(new JSONObject().put("id", id).put("name", item.getString("name"))
                     .put("suffix", secret.substring(Math.max(0, secret.length() - 4))));
-            if (id.equals(active)) result.put("apiKey", secret);
+            if (includeActiveKey && id.equals(active)) result.put("apiKey", secret);
         }
         return result;
     }
 
     String manage(String action, String id, String name, String secret) {
+        return manageProfile("default", action, id, name, secret);
+    }
+
+    String manageProfile(String profile, String action, String id, String name, String secret) {
+        return manageProfile(profile, action, id, name, secret, null);
+    }
+
+    String manageProfile(String profile, String action, String id, String name, String secret, String expectedList) {
+        boolean original = "default".equals(profile);
+        if (!original && (profile == null || !profile.matches("[a-f0-9]{8}(-[a-f0-9]{4}){3}-[a-f0-9]{12}"))) return "";
+        String ringName = original ? RING : RING + "." + profile;
         synchronized (LOCK) {
             try {
-                JSONObject state = load();
-                if ("read".equals(action)) {
+                JSONObject state = load(ringName, original);
+                // The native editor can remain open while a different key is bound on the platform screen.
+                if (expectedList != null && !snapshot(state, false).toString().equals(expectedList)) return "";
+                boolean listing = "list".equals(action);
+                if (listing || "read".equals(action)) {
                     // If an upgrade cannot be committed, the old encrypted key still works.
-                    if (!prefs.contains(RING) && prefs.contains(RECORD)) {
-                        try { save(state); } catch (Exception retryOnNextRead) {
+                    if (original && !prefs.contains(ringName) && prefs.contains(RECORD)) {
+                        try { save(state, ringName, original); } catch (Exception retryOnNextRead) {
                             // The original record has already been decrypted and is still usable.
                         }
                     }
-                } else if (!update(state, action, id, name, secret) || !save(state)) {
+                } else if (!update(state, action, id, name, secret) || !save(state, ringName, original)) {
                     return "";
                 }
-                return snapshot(state).toString();
+                return snapshot(state, !listing).toString();
             } catch (Exception unavailable) {
                 return "";
             }

@@ -1,0 +1,27 @@
+<resources>
+    <string name="key_panel_title">开放平台 API 密钥</string>
+    <string name="key_panel_usage">用量</string>
+    <string name="key_panel_create">新建密钥</string>
+    <string name="key_panel_empty">还没有 API 密钥</string>
+    <string name="key_panel_tracking">Tracking ID · %1$s</string>
+    <string name="key_panel_rename">重命名</string>
+    <string name="key_panel_revoke">删除</string>
+    <string name="key_panel_show">在官网查看</string>
+    <string name="key_panel_revoke_title">删除官方密钥？</string>
+    <string name="key_panel_revoke_message">删除后，使用「%1$s」的应用将无法再发送请求。</string>
+    <string name="key_panel_confirm">继续</string>
+    <string name="key_panel_retry">重试</string>
+    <string name="key_panel_loading">正在读取官方密钥…</string>
+    <string name="key_panel_unavailable">暂时无法读取官方密钥</string>
+    <string name="key_panel_login_title">登录后查看 API 密钥</string>
+    <string name="key_panel_login_detail">请使用密钥所属的开放平台账户。</string>
+    <string name="key_panel_login">登录 DeepSeek</string>
+    <string name="key_panel_pending_title">等待官方确认</string>
+    <string name="key_panel_official">打开官方页面</string>
+    <string name="key_panel_harness">平台托管</string>
+    <string name="key_panel_review">此操作需要在官网核对</string>
+    <string name="key_panel_verify">前往官方认证</string>
+    <string name="key_panel_verify_detail">创建密钥前，请先完成实名认证。</string>
+    <string name="key_panel_expand">%1$s，展开详情</string>
+    <string name="key_panel_collapse">%1$s，收起详情</string>
+</resources>

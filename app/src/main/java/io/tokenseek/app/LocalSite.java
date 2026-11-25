@@ -40,6 +40,10 @@ final class LocalSite extends WebViewClient {
         return ownedOrigin(uri) && "/site/index.html".equals(uri.getEncodedPath()) && uri.getQuery() == null;
     }
 
+    @Override public void onPageStarted(WebView view, String url, android.graphics.Bitmap icon) {
+        if (isIndex(Uri.parse(url))) activity.onLocalPageStarted();
+    }
+
     @Override public void onPageFinished(WebView view, String url) {
         if (isIndex(Uri.parse(url))) activity.onLocalPageReady();
     }
@@ -118,5 +122,13 @@ final class LocalSite extends WebViewClient {
         int size;
         while ((size = stream.read(part)) != -1) buffer.write(part, 0, size);
         return buffer.toString("UTF-8");
+    }
+
+    static String bundledScript(android.content.Context context, int resource) {
+        try (InputStream raw = context.getResources().openRawResource(resource)) {
+            return read(raw);
+        } catch (IOException unavailable) {
+            return "";
+        }
     }
 }

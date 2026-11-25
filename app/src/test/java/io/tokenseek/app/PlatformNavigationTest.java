@@ -15,7 +15,7 @@ public class PlatformNavigationTest {
     private static final String KEYS = ORIGIN + "/api_keys";
 
     @Test public void protectedEntryResumesExactlyOnceFromVerifiedHomeGet() {
-        for (String target : new String[] { TOP_UP, KEYS }) {
+        for (String target : new String[] { TOP_UP, KEYS, ORIGIN + "/transactions" }) {
             PlatformNavigation route = new PlatformNavigation(target, false);
             assertNull(route.onVisibleRoot(target, true, 0));
             assertNull(route.onVisibleRoot(HOME, true, 1));

@@ -1,38 +1,28 @@
 .choice {
   flex-shrink: 0;
-  padding: 2px 16px 0;
+  padding: 2px 0 0 12px;
   cursor: default;
 }
 
 .line {
   display: flex;
   align-items: center;
-  gap: 2px;
 }
 
-.label,
 .choice p {
   color: var(--dsw-alias-label-secondary);
+  margin: 0 0 4px 4px;
   font-size: 12px;
   line-height: 18px;
 }
 
-.label {
-  margin-inline-end: 6px;
-}
-
-.choice p {
-  margin: 0;
-}
-
 .line button {
-  position: relative;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   min-height: 44px;
   min-width: 48px;
-  padding: 0 8px;
+  padding: 0;
   border: 0;
   background: transparent;
   color: var(--dsw-alias-label-secondary);
@@ -44,7 +34,8 @@
 }
 
 .line button span {
-  position: relative;
+  border-radius: 999px;
+  padding: 3px 11px;
 }
 
 .line button[aria-pressed='true'] {
@@ -52,15 +43,8 @@
   font-weight: 600;
 }
 
-.line button[aria-pressed='true'] span::after {
-  position: absolute;
-  right: 0;
-  bottom: -4px;
-  left: 0;
-  height: 2px;
-  border-radius: 1px;
-  background: currentColor;
-  content: '';
+.line button[aria-pressed='true'] span {
+  background: var(--dsw-alias-button-ghost-active-fill);
 }
 
 @media (hover: hover) {

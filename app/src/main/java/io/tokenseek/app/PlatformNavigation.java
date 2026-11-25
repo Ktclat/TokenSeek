@@ -7,6 +7,7 @@ import java.net.URISyntaxException;
 final class PlatformNavigation {
     static final String BASE = "https://platform.deepseek.com";
     static final String TOP_UP = "/top_up";
+    static final String TRANSACTIONS = "/transactions";
     static final String KEYS = "/api_keys";
     static final String LOGIN = "/sign_in";
 
@@ -24,7 +25,7 @@ final class PlatformNavigation {
         // Only known GET entry points can be replayed. OAuth queries, fragments and checkout URLs
         // belong to the website and must not be persisted or automatically repeated.
         entry = initial != null && initial.getRawQuery() == null && initial.getRawFragment() == null
-                && (KEYS.equals(path) || TOP_UP.equals(path)) ? BASE + path : null;
+                && isTaskPath(path) ? BASE + path : null;
         loginTask = LOGIN.equals(path);
         consumed = resumeConsumed;
     }
@@ -50,6 +51,10 @@ final class PlatformNavigation {
 
     static boolean isKeyPage(String url) {
         return KEYS.equals(platformPath(url));
+    }
+
+    static boolean isTaskPath(String path) {
+        return TOP_UP.equals(path) || KEYS.equals(path) || TRANSACTIONS.equals(path);
     }
 
     static boolean canBind(String visibleUrl, String renderedUrl, boolean isRoot, boolean failed) {
@@ -123,7 +128,7 @@ final class PlatformNavigation {
     String onVisibleRoot(String url, boolean fromGetDocument, int historyIndex) {
         if ((!loginTask && entry == null) || !fromGetDocument || step == Step.FINISHED) return null;
         String path = platformPath(url);
-        boolean businessPage = TOP_UP.equals(path) || KEYS.equals(path);
+        boolean businessPage = isTaskPath(path);
         URI current = https(url);
         boolean home = "/".equals(path) && current.getRawQuery() == null && current.getRawFragment() == null;
 

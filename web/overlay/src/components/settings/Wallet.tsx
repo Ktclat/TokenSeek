@@ -1,11 +1,17 @@
-import { useEffect, useState } from 'react'
+import { useLayoutEffect } from 'react'
+import { useTheme } from '../../app/theme.js'
+import { fontScales, useChatPreferences } from '../../services/chatPreferences.js'
 import { useTranslate, type TranslationKey } from '../../i18n/index.js'
-import { getBalance } from '../../services/api/balance.js'
-import { classifyApiError } from '../../services/api/errors.js'
-import { platformUrls, usePlatformLabels } from './OfficialPlatform.js'
+import { useBalance, type WalletState } from '../../services/walletBalance.js'
+import { platformUrls } from './OfficialPlatform.js'
 import { Button } from '../base/Button.js'
-import { closeSettings, pushSettings } from './settingsDialogState.js'
+import { backSettings, closeSettings, pushSettings } from './settingsDialogState.js'
+import { FundingForm, parseAmount, presets, useFundingText } from './Funding.js'
 import styles from './Wallet.module.css'
+
+declare global {
+  interface Window { TokenSeekFunding?: { present(screen: string): void; checkout?(amount: string): void } }
+}
 
 export const WalletIcon = () => (
   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
@@ -15,67 +21,14 @@ export const WalletIcon = () => (
   </svg>
 )
 
-type WalletState =
-  | { status: 'unbound' | 'loading' | 'invalid' | 'error' }
-  | { status: 'ready'; balance: Awaited<ReturnType<typeof getBalance>> }
-
-function useBalance(apiKey: string | null) {
-  const [version, setVersion] = useState(0)
-  const [state, setState] = useState<WalletState>({ status: apiKey ? 'loading' : 'unbound' })
-  const refresh = () => setVersion(count => count + 1)
-
-  useEffect(() => {
-    if (!apiKey) return
-    let timer: ReturnType<typeof setTimeout>
-    const onReturn = () => {
-      if (document.visibilityState !== 'visible') return
-      clearTimeout(timer)
-      timer = setTimeout(refresh, 100)
-    }
-    window.addEventListener('focus', onReturn)
-    window.addEventListener('pageshow', onReturn)
-    window.addEventListener('tokenseek:resume', onReturn)
-    document.addEventListener('visibilitychange', onReturn)
-    return () => {
-      clearTimeout(timer)
-      window.removeEventListener('focus', onReturn)
-      window.removeEventListener('pageshow', onReturn)
-      window.removeEventListener('tokenseek:resume', onReturn)
-      document.removeEventListener('visibilitychange', onReturn)
-    }
-  }, [apiKey])
-
-  useEffect(() => {
-    if (!apiKey) return
-    const controller = new AbortController()
-    let active = true
-    setState({ status: 'loading' })
-    const timeout = setTimeout(() => controller.abort(), 15000)
-    getBalance(apiKey, controller.signal)
-      .then(balance => {
-        if (active) setState({ status: 'ready', balance })
-      })
-      .catch((error: unknown) => {
-        if (active) setState({ status: classifyApiError(error) === 'unauthorized' ? 'invalid' : 'error' })
-      })
-      .finally(() => clearTimeout(timeout))
-    return () => {
-      active = false
-      clearTimeout(timeout)
-      controller.abort()
-    }
-  }, [apiKey, version])
-
-  return { state, refresh }
-}
+const isRefreshing = (state: WalletState) => state.status === 'loading' || (state.status === 'ready' && Boolean(state.refreshing))
 
 const walletMessage = (state: WalletState): TranslationKey | null => {
-  if (state.status === 'unbound') return 'walletUnbound'
+  if (state.status === 'unbound') return null
   if (state.status === 'loading') return 'walletLoading'
   if (state.status === 'invalid') return 'walletInvalid'
   if (state.status !== 'ready') return 'walletLoadFailed'
   if (!state.balance.balance_infos.length) return 'walletEmpty'
-  if (state.balance.balance_infos.every(info => /^-?0+(\.0+)?$/.test(info.total_balance))) return 'walletZero'
   if (!state.balance.is_available) return 'walletUnavailable'
   return null
 }
@@ -84,6 +37,7 @@ const BalanceCard = ({ bound, state, refresh, summary = false }: {
   bound: boolean; summary?: boolean
 } & ReturnType<typeof useBalance>) => {
   const t = useTranslate()
+  const labels = useFundingText()
   const message = walletMessage(state)
   return (
     <div className={styles.balance} aria-label={t('walletTotal')}>
@@ -91,20 +45,30 @@ const BalanceCard = ({ bound, state, refresh, summary = false }: {
         <span>{t('walletTotal')}</span>
         {summary ? (
           <button type="button" className={styles.textButton} onClick={() => pushSettings('wallet')}>{t('wallet')}</button>
-        ) : bound && <button type="button" className={styles.textButton} disabled={state.status === 'loading'} onClick={refresh}>
-          {t('walletRefresh')}
-        </button>}
+        ) : bound ? <button type="button" className={styles.textButton} disabled={isRefreshing(state)} onClick={refresh}>
+          {isRefreshing(state) ? labels.refreshing : t('walletRefresh')}
+        </button> : <button type="button" className={styles.textButton} onClick={() => pushSettings('keys')}>{labels.keys}</button>}
       </header>
       <div aria-live="polite">
         {state.status === 'ready' && state.balance.balance_infos.map(info => (
           <div key={info.currency} className={styles.account}>
-            <div className={styles.total}><small>{info.currency}</small> {info.total_balance}</div>
-            {!summary && <dl className={styles.parts}>
-              <div><dt>{t('walletCredit')}</dt><dd>{info.topped_up_balance}</dd></div>
-              <div><dt>{t('walletGrant')}</dt><dd>{info.granted_balance}</dd></div>
-            </dl>}
+            <div className={styles.total}>{info.total_balance} <small>{info.currency}</small></div>
           </div>
         ))}
+        {!summary && state.status === 'ready' && state.balance.balance_infos.length > 0 && (
+          <details className={styles.details}>
+            <summary>{labels.details}</summary>
+            {state.balance.balance_infos.map(info => (
+              <div key={info.currency} className={styles.breakdown}>
+                {state.balance.balance_infos.length > 1 && <strong>{info.currency}</strong>}
+                <dl className={styles.parts}>
+                  <div><dt>{t('walletCredit')}</dt><dd>{info.topped_up_balance}</dd></div>
+                  <div><dt>{t('walletGrant')}</dt><dd>{info.granted_balance}</dd></div>
+                </dl>
+              </div>
+            ))}
+          </details>
+        )}
         {message && <p className={styles.status}>{t(message)}</p>}
       </div>
     </div>
@@ -118,17 +82,64 @@ export const BalanceSummary = ({ apiKey }: { apiKey: string }) => {
 
 export const Wallet = ({ apiKey }: { apiKey: string | null }) => {
   const t = useTranslate()
-  const labels = usePlatformLabels()
+  const labels = useFundingText()
   const balance = useBalance(apiKey)
+  const dark = useTheme() === 'dark'
+  const scale = useChatPreferences(s => fontScales[s.font])
+  const { state, refresh } = balance
+  const message = walletMessage(state)
+  const canChat = state.status === 'ready' && state.balance.is_available
+  const accountHint = apiKey ? labels.boundHint : labels.signIn
+  const native = window.TokenSeekFunding
+  const screen = JSON.stringify({
+    page: 'wallet', dark, scale, bound: Boolean(apiKey), canChat, status: state.status, refreshing: isRefreshing(state),
+    message: message ? t(message) : '', accountHint, presets,
+    balances: state.status === 'ready' ? state.balance.balance_infos.map(row => ({
+      currency: row.currency, total: row.total_balance, credit: row.topped_up_balance, grant: row.granted_balance,
+    })) : [],
+    labels: {
+      ...labels, total: t('walletTotal'), refresh: t('walletRefresh'),
+      credit: t('walletCredit'), grant: t('walletGrant'), chat: t('walletChat'),
+    },
+  })
+
+  useLayoutEffect(() => {
+    if (!native) return
+    const action = (event: Event) => {
+      const detail = (event as CustomEvent<{ id?: string; amount?: string }>).detail
+      if (!detail) return
+      switch (detail.id) {
+        case 'back': backSettings(); break
+        case 'refresh': if (apiKey) refresh(); break
+        case 'keys': pushSettings('keys'); break
+        case 'chat': if (canChat) closeSettings(); break
+        case 'transactions':
+          window.open(platformUrls.transactions, '_blank', 'noopener,noreferrer')
+          break
+        case 'checkout':
+          if (typeof detail.amount === 'string') {
+            const amount = parseAmount(detail.amount).amount
+            if (!amount) break
+            if (native.checkout) native.checkout(amount)
+            else window.open(platformUrls.topUp, '_blank', 'noopener,noreferrer')
+          }
+          break
+      }
+    }
+    window.addEventListener('tokenseek:funding-action', action)
+    return () => window.removeEventListener('tokenseek:funding-action', action)
+  }, [native, apiKey, refresh, canChat])
+
+  useLayoutEffect(() => { native?.present(screen) }, [native, screen])
+  useLayoutEffect(() => () => native?.present(''), [native])
+
+  if (native) return null
   return (
-    <section className={styles.wallet} aria-label={t('wallet')}>
+    <section className={styles.wallet} aria-label={labels.title}>
       <BalanceCard bound={Boolean(apiKey)} {...balance} />
-      <div className={styles.actions}>
-        <a className={styles.topUp} href={platformUrls.topUp} target="_blank" rel="noopener noreferrer">{labels.topUp}</a>
-        {balance.state.status === 'ready' && balance.state.balance.is_available &&
-          <Button variant="outlined" onClick={closeSettings}>{t('walletChat')}</Button>}
-      </div>
-      <p className={styles.hint}>{t('walletAccountHint')}</p>
+      {state.status === 'invalid' && <Button size="m" variant="outlined" onClick={() => pushSettings('keys')}>{labels.keys}</Button>}
+      <FundingForm accountHint={accountHint} largeType={scale > 100} />
+      {canChat && <button type="button" className={styles.chat} onClick={closeSettings}>{t('walletChat')}</button>}
     </section>
   )
 }

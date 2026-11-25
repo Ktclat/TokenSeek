@@ -1,7 +1,7 @@
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/platform_root" android:layout_width="match_parent" android:layout_height="match_parent"
     android:orientation="vertical">
-    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
+    <LinearLayout android:id="@+id/platform_toolbar" android:layout_width="match_parent" android:layout_height="wrap_content"
         android:minHeight="48dp" android:gravity="center_vertical" android:orientation="horizontal">
         <ImageButton android:id="@+id/platform_back" android:layout_width="48dp" android:layout_height="48dp"
             android:background="?android:attr/selectableItemBackgroundBorderless" android:src="@drawable/platform_back"
@@ -15,6 +15,10 @@
                 android:includeFontPadding="false" android:singleLine="true" android:ellipsize="middle" android:textDirection="ltr"
                 android:textSize="12sp" android:textColor="@color/platform_muted" />
         </LinearLayout>
+        <Button android:id="@+id/platform_payment_browser" style="@style/PlatformAction"
+            android:layout_width="wrap_content" android:layout_height="wrap_content" android:visibility="gone"
+            android:layout_marginEnd="4dp" android:text="@string/platform_browser_short"
+            android:contentDescription="@string/platform_payment_browser_description" />
         <Button android:id="@+id/platform_bind" style="@style/PlatformAction"
             android:layout_width="wrap_content" android:layout_height="wrap_content" android:visibility="gone"
             android:layout_marginEnd="4dp" android:text="@string/platform_bind" />
@@ -22,19 +26,38 @@
     <ProgressBar android:id="@+id/platform_progress" style="?android:attr/progressBarStyleHorizontal"
         android:layout_width="match_parent" android:layout_height="2dp" android:max="100"
         android:progressTint="@color/platform_accent" android:importantForAccessibility="no" />
+    <TextView android:id="@+id/platform_session_warning" android:visibility="gone"
+        android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:background="@color/platform_hint_background" android:paddingHorizontal="12dp" android:paddingVertical="5dp"
+        android:textSize="13sp" android:textColor="@color/platform_ink" android:accessibilityLiveRegion="polite" />
     <LinearLayout android:id="@+id/platform_notice" android:visibility="gone" android:orientation="vertical"
         android:layout_width="match_parent" android:layout_height="wrap_content"
         android:paddingHorizontal="12dp" android:paddingTop="6dp" android:background="@color/platform_hint_background">
         <TextView android:id="@+id/platform_notice_text" android:layout_width="match_parent"
             android:layout_height="wrap_content" android:textSize="14sp" android:accessibilityLiveRegion="polite"
             android:textColor="@color/platform_ink" />
-        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:gravity="end">
+        <io.tokenseek.app.CheckoutActions android:layout_width="match_parent" android:layout_height="wrap_content" android:gravity="end">
             <Button android:id="@+id/platform_dismiss" style="@style/PlatformAction"
                 android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/platform_dismiss"/>
             <Button android:id="@+id/platform_notice_action" style="@style/PlatformAction"
                 android:layout_width="wrap_content" android:layout_height="wrap_content"/>
-        </LinearLayout>
+        </io.tokenseek.app.CheckoutActions>
     </LinearLayout>
-    <FrameLayout android:id="@+id/platform_windows" android:layout_width="match_parent"
-        android:layout_height="0dp" android:layout_weight="1" />
+    <io.tokenseek.app.CheckoutActions android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:gravity="end" android:paddingEnd="8dp">
+        <Button android:id="@+id/platform_fill_amount" style="@style/PlatformAction"
+            android:layout_width="wrap_content" android:layout_height="wrap_content" android:visibility="gone" />
+        <Button android:id="@+id/platform_qr" style="@style/PlatformAction"
+            android:layout_width="wrap_content" android:layout_height="wrap_content" android:visibility="gone"
+            android:text="@string/payment_qr_action" />
+    </io.tokenseek.app.CheckoutActions>
+    <Button android:id="@+id/platform_key_view" style="@style/PlatformAction"
+        android:layout_width="wrap_content" android:layout_height="wrap_content"
+        android:layout_gravity="end" android:layout_marginEnd="8dp" android:visibility="gone" />
+    <FrameLayout android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1">
+        <FrameLayout android:id="@+id/platform_windows" android:layout_width="match_parent"
+            android:layout_height="match_parent" />
+        <FrameLayout android:id="@+id/platform_key_host" android:layout_width="match_parent"
+            android:layout_height="match_parent" android:visibility="gone" android:focusableInTouchMode="true" />
+    </FrameLayout>
 </LinearLayout>
