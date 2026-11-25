@@ -23,7 +23,7 @@ import java.util.Map;
 
 import static io.tokenseek.app.NativeAccountStore.object;
 
-/** Native account and settings navigation. The host owns chat, data, billing and official key services. */
+/** Native local profile, API connection and settings navigation. */
 final class NativeAccountPages extends FrameLayout {
     interface Host {
         void open(String destination);
@@ -42,6 +42,8 @@ final class NativeAccountPages extends FrameLayout {
     private NativeProfileEditor editor;
     private NativeVoiceOptions voices;
     private String page = "", balanceOwner = "", balance = "";
+    private String keyOwner = "", selectedKeyId = "", selectedSuffix = "";
+    private int savedKeyCount = -1;
     private boolean externalRoot;
 
     NativeAccountPages(Activity activity, KeyVault vault, Host host) {
@@ -95,7 +97,7 @@ final class NativeAccountPages extends FrameLayout {
         if (addKey) next = "keys";
         if (!"home".equals(next)) {
             history.push("home");
-            if ("keys".equals(next) || "profile".equals(next)) history.push("account");
+            if ("keys".equals(next) || "connect".equals(next) || "profile".equals(next)) history.push("account");
             if ("font".equals(next)) history.push("theme");
             if ("newprofile".equals(next)) history.push("profiles");
             if ("locale".equals(next) || "location".equals(next) || "voice".equals(next)) history.push("general");
@@ -129,8 +131,40 @@ final class NativeAccountPages extends FrameLayout {
     }
 
     void setBalance(String owner, String summary) {
+        if (!store.activeId().equals(owner)) return;
+        String next = summary == null ? "" : summary;
+        if (owner.equals(balanceOwner) && next.equals(balance)) return;
         balanceOwner = owner;
-        balance = summary == null ? "" : summary;
+        balance = next;
+        if ("account".equals(page)) refresh();
+    }
+
+    /** Consumes only the masked list already obtained by the host when it selects a chat key. */
+    void setKeySummary(String owner, JSONArray entries, String activeId) {
+        if (!store.activeId().equals(owner)) return;
+        String selected = "", suffix = "";
+        int count = entries == null ? -1 : entries.length();
+        if (entries != null && activeId != null && !activeId.isEmpty()) {
+            for (int i = 0; i < entries.length(); i++) {
+                JSONObject entry = entries.optJSONObject(i);
+                if (entry != null && activeId.equals(entry.optString("id"))) {
+                    selected = activeId;
+                    String tail = entry.optString("suffix", "");
+                    if (tail.matches("[A-Za-z0-9_-]{4}")) suffix = tail;
+                    break;
+                }
+            }
+            if (selected.isEmpty()) count = -1;
+        }
+        if (owner.equals(keyOwner) && selected.equals(selectedKeyId) && suffix.equals(selectedSuffix) && count == savedKeyCount) return;
+        if (!owner.equals(keyOwner) || !selected.equals(selectedKeyId)) {
+            balance = "";
+            balanceOwner = "";
+        }
+        keyOwner = owner;
+        selectedKeyId = selected;
+        selectedSuffix = suffix;
+        savedKeyCount = count;
         if ("account".equals(page)) refresh();
     }
 
@@ -166,14 +200,14 @@ final class NativeAccountPages extends FrameLayout {
                 if ("voice".equals(page) && voices != null) show(page);
             });
         }
-        if ("keys".equals(page)) {
+        boolean connecting = "connect".equals(page);
+        if (connecting || "keys".equals(page)) {
             settings = null;
             removeAllViews();
             keys = new NativeChatKeys(activity, vault, (action, owner) -> {
                 switch (action) {
                     case "back": pop(); break;
                     case "chat": host.open("chat"); break;
-                    case "official": host.open("officialKeys"); break;
                     case "changed": host.changed("keys"); break;
                     case "switch":
                         if (store.select(owner)) {
@@ -185,8 +219,9 @@ final class NativeAccountPages extends FrameLayout {
                 }
             });
             addView(keys, -1, -1);
-            keys.render(object("page", page, "profile", store.activeId(), "profiles", store.profiles(),
-                    "nickname", store.profile().optString("nickname"), "locale", locale, "dark", store.dark(), "scale", store.fontScale(), "focusNewKey", addKey));
+            keys.render(object("page", "keys", "profile", store.activeId(), "profiles", store.profiles(),
+                    "nickname", store.profile().optString("nickname"), "locale", locale, "dark", store.dark(), "scale", store.fontScale(),
+                    "focusNewKey", connecting || addKey, "connectFromAccount", connecting));
             return;
         }
         if ("profile".equals(page) || "newprofile".equals(page)) {
@@ -239,9 +274,8 @@ final class NativeAccountPages extends FrameLayout {
                 groups.put(group(null, link("profiles")));
                 break;
             case "account":
-                groups.put(group(null, link("profile", profile.optString("nickname"))));
-                groups.put(group(null, link("wallet", store.activeId().equals(balanceOwner) ? balance : ""), link("usage")));
-                groups.put(group(null, link("officialKeys"), link("keys")));
+                groups.put(group(strings.getString(R.string.ac_device_account), link("profile", profile.optString("nickname"))));
+                groups.put(apiGroup(profile.optString("id")));
                 break;
             case "profiles":
                 JSONArray choices = new JSONArray(), rows = store.profiles();
@@ -277,6 +311,23 @@ final class NativeAccountPages extends FrameLayout {
             default: throw new IllegalArgumentException("Unknown native account page: " + page);
         }
         return groups;
+    }
+
+    private JSONObject apiGroup(String owner) {
+        JSONArray rows = new JSONArray();
+        int count = owner.equals(keyOwner) ? savedKeyCount : -1;
+        if (count >= 0 && selectedKeyId.isEmpty()) rows.put(link("connect"));
+        if (count != 0) {
+            String summary;
+            if (count < 0) summary = strings.getString(R.string.ac_keys_unavailable);
+            else if (selectedKeyId.isEmpty()) summary = strings.getString(R.string.ac_keys_not_selected);
+            else if (selectedSuffix.isEmpty()) summary = strings.getString(R.string.ac_key_selected);
+            else summary = strings.getString(R.string.ac_key_selected_suffix, selectedSuffix);
+            rows.put(link("keys", summary));
+        }
+        rows.put(link("wallet", owner.equals(balanceOwner) ? balance : ""));
+        rows.put(link("usage"));
+        return object("label", "DeepSeek API", "items", rows);
     }
 
     private JSONObject voiceChoices() {
@@ -361,7 +412,7 @@ final class NativeAccountPages extends FrameLayout {
             setLocation(action);
         } else {
             switch (action) {
-                case "chat": case "wallet": case "usage": case "officialKeys": case "data": host.open(action); break;
+                case "chat": case "wallet": case "usage": case "data": host.open(action); break;
                 default: push(action);
             }
         }
@@ -402,7 +453,7 @@ final class NativeAccountPages extends FrameLayout {
             case "profile": id = R.string.ac_profile; break;
             case "newprofile": id = R.string.ac_newprofile; break;
             case "keys": id = R.string.ac_keys; break;
-            case "officialKeys": id = R.string.ac_official; break;
+            case "connect": id = R.string.ac_connect; break;
             case "wallet": id = R.string.ac_wallet; break;
             case "usage": id = R.string.ac_usage; break;
             case "photo_error": id = R.string.ac_photo_error; break;

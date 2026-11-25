@@ -24,7 +24,7 @@ import java.util.ArrayList;
 import java.util.Locale;
 
 /** Native account and conversation views over the same on-device request records. */
-final class NativeUsagePage extends LinearLayout {
+class NativeUsagePage extends LinearLayout {
     private final boolean english;
     private final boolean dark;
     private final float scale;
@@ -71,7 +71,7 @@ final class NativeUsagePage extends LinearLayout {
         body.setPadding(dp(16), dp(16), dp(16), dp(24));
         int width = getResources().getConfiguration().screenWidthDp > 620 ? dp(600) : -1;
         center.addView(body, new FrameLayout.LayoutParams(width, -2, Gravity.TOP | Gravity.CENTER_HORIZONTAL));
-        reset(t("账户用量", "Account usage"));
+        reset(t("本机对话用量", "On-device chat usage"));
         body.addView(text(t("正在读取本机用量…", "Reading saved usage…"), 14, muted(), false));
     }
 
@@ -80,7 +80,7 @@ final class NativeUsagePage extends LinearLayout {
     }
 
     void renderAccountTotals(String accountName, NativeUsageRecords.Totals totals) {
-        reset(t("账户用量", "Account usage"));
+        reset(t("本机对话用量", "On-device chat usage"));
         LinearLayout card = card();
         String caption = accountName == null || accountName.trim().isEmpty() ? t("当前本机账户", "Current device profile") : accountName;
         card.addView(text(caption, 18, ink(), true));
@@ -228,13 +228,15 @@ final class NativeUsagePage extends LinearLayout {
             metric(card, t("非最终快照", "Non-final snapshots"), format(totals.snapshotTokens) + " tokens");
     }
 
-    private void reset(String caption) {
+    final void scrollTop() { scroll.post(() -> scroll.scrollTo(0, 0)); }
+
+    final void reset(String caption) {
         title.setText(caption);
         if (Build.VERSION.SDK_INT >= 28) setAccessibilityPaneTitle(caption);
         body.removeAllViews();
     }
 
-    private void addHeading(LinearLayout card, String caption) {
+    final void addHeading(LinearLayout card, String caption) {
         TextView view = text(caption, 16, ink(), true);
         heading(view);
         card.addView(view);
@@ -244,13 +246,13 @@ final class NativeUsagePage extends LinearLayout {
         if (Build.VERSION.SDK_INT >= 28) view.setAccessibilityHeading(true);
     }
 
-    private void figure(LinearLayout card, String value) {
+    final void figure(LinearLayout card, String value) {
         TextView figure = text(value, 27, ink(), true);
         figure.setFontFeatureSettings("tnum");
         card.addView(figure, gap(8));
     }
 
-    private void metric(LinearLayout card, String name, String value) {
+    final void metric(LinearLayout card, String name, String value) {
         LinearLayout row = new LinearLayout(getContext());
         row.setGravity(Gravity.CENTER_VERTICAL);
         TextView label = text(name, 14, muted(), false);
@@ -264,14 +266,14 @@ final class NativeUsagePage extends LinearLayout {
         card.addView(row, gap(8));
     }
 
-    private void note(LinearLayout card, String caption) {
+    final void note(LinearLayout card, String caption) {
         card.addView(text(caption, 14, muted(), false), gap(8));
     }
 
-    private String format(Number value) { return numbers.format(value); }
-    private String t(String zh, String en) { return english ? en : zh; }
+    final String format(Number value) { return numbers.format(value); }
+    final String t(String zh, String en) { return english ? en : zh; }
 
-    private LinearLayout card() {
+    final LinearLayout card() {
         LinearLayout card = column();
         card.setPadding(dp(16), dp(16), dp(16), dp(16));
         card.setBackground(fill(surface(), 16));
@@ -279,7 +281,7 @@ final class NativeUsagePage extends LinearLayout {
         return card;
     }
 
-    private Button button(String label, boolean selected, OnClickListener action) {
+    final Button button(String label, boolean selected, OnClickListener action) {
         Button button = new Button(getContext());
         button.setText(label);
         button.setTextColor(selected ? (dark ? 0xffbdc9ff : 0xff274eb6) : ink());
@@ -310,7 +312,7 @@ final class NativeUsagePage extends LinearLayout {
         return column;
     }
 
-    private LayoutParams gap(int top) { LayoutParams p = new LayoutParams(-1, -2); p.topMargin = dp(top); return p; }
+    final LayoutParams gap(int top) { LayoutParams p = new LayoutParams(-1, -2); p.topMargin = dp(top); return p; }
     private RippleDrawable touch(GradientDrawable fill) {
         return new RippleDrawable(ColorStateList.valueOf(dark ? 0x33ffffff : 0x18000000), fill, null);
     }

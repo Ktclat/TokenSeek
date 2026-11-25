@@ -10,9 +10,8 @@
     <string name="ac_profile">编辑资料</string>
     <string name="ac_newprofile">添加账户</string>
     <string name="ac_keys">聊天密钥</string>
-    <string name="ac_official">开放平台密钥</string>
-    <string name="ac_wallet">余额与充值</string>
-    <string name="ac_usage">用量</string>
+    <string name="ac_wallet">余额</string>
+    <string name="ac_usage">开放平台用量</string>
     <string name="ac_username">用户名</string>
     <string name="ac_nickname">昵称</string>
     <string name="ac_nick_hint">默认使用用户名</string>
@@ -51,4 +50,10 @@
     <string name="ac_voices_loading">正在读取设备音色…</string>
     <string name="ac_voices_empty">设备未提供当前语言的本地朗读音色。</string>
     <string name="ac_location_help">可选。选择后，对话会向模型提供此地区。</string>
+    <string name="ac_device_account">本机账户</string>
+    <string name="ac_connect">连接 DeepSeek API</string>
+    <string name="ac_keys_unavailable">无法读取本机密钥</string>
+    <string name="ac_keys_not_selected">尚未选用</string>
+    <string name="ac_key_selected">已选</string>
+    <string name="ac_key_selected_suffix">已选 · •••• %1$s</string>
 </resources>

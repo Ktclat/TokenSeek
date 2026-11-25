@@ -35,7 +35,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 public final class MainActivity extends Activity {
-    private static final int PICK_PHOTO = 510, PICK_FILE = 511, VOICE = 512;
+    private static final int PICK_PHOTO = 510, PICK_FILE = 511, VOICE = 512, PICK_USAGE = 513;
     private final ArrayDeque<String> trail = new ArrayDeque<>();
     private final ArrayDeque<Bundle> settingsTrail = new ArrayDeque<>();
     private final ExecutorService io = Executors.newSingleThreadExecutor();
@@ -51,13 +51,12 @@ public final class MainActivity extends Activity {
     private NativeWalletController wallet;
     private NativeDataPage data;
     private NativeUsagePage usage;
-    private NativePlatformTasks platform;
+    private NativePlatformUsagePage platformUsage;
     private NativeChatClient.Call upload;
     private TextToSpeech speech;
     private String page = "chat",
             owner = "",
             key = "",
-            amount = "",
             pickerOwner = "",
             pickerThread = "";
     private JSONArray sections = new JSONArray();
@@ -124,7 +123,7 @@ public final class MainActivity extends Activity {
                             public void changed(String reason) {
                                 if (!accounts.activeId().equals(owner)) switchWorkspace();
                                 else {
-                                    readKey();
+                                    if ("keys".equals(reason)) readKey();
                                     bindWallet();
                                     renderChat();
                                     colors();
@@ -138,15 +137,25 @@ public final class MainActivity extends Activity {
         NativeHistoryTransfers.observe(transfers);
         switchWorkspace();
         if (state != null && owner.equals(state.getString("owner"))) {
-            wallet.restoreForm(state.getBundle("walletForm"));
-            amount = state.getString("amount", "");
+            wallet.restoreState(
+                    state.containsKey("wallet")
+                            ? state.getBundle("wallet")
+                            : state.getBundle("walletForm"));
             pickerOwner = state.getString("pickerOwner", "");
             pickerThread = state.getString("pickerThread", "");
             ArrayList<String> saved = state.getStringArrayList("trail");
-            if (saved != null) trail.addAll(saved);
+            page = nativeDestination(state.getString("page", "chat"));
+            if (saved != null) {
+                String previous = page;
+                for (String entry : saved) {
+                    String restored = nativeDestination(entry);
+                    if (restored.equals(previous) && !"settings".equals(restored)) continue;
+                    trail.addLast(restored);
+                    previous = restored;
+                }
+            }
             ArrayList<Bundle> savedSettings = state.getParcelableArrayList("settingsTrail");
             if (savedSettings != null) settingsTrail.addAll(savedSettings);
-            page = state.getString("page", "chat");
             showPage(state.getBundle("settingsNavigation"));
             if ("data".equals(page) && data != null) data.restoreState(state.getBundle("data"));
         } else home();
@@ -176,8 +185,13 @@ public final class MainActivity extends Activity {
         try {
             JSONObject keys = new JSONObject(snapshot);
             key = keys.isNull("apiKey") ? "" : keys.optString("apiKey");
+            settings.setKeySummary(
+                    owner,
+                    keys.optJSONArray("entries"),
+                    keys.isNull("activeId") ? "" : keys.optString("activeId"));
         } catch (JSONException invalid) {
             key = "";
+            settings.setKeySummary(owner, null, "");
         }
     }
 
@@ -305,7 +319,15 @@ public final class MainActivity extends Activity {
         root.addView(v, new FrameLayout.LayoutParams(-1, -1));
     }
 
+    private static String nativeDestination(String saved) {
+        if ("checkout".equals(saved)) return "wallet";
+        if ("transactions".equals(saved)) return "usage";
+        if ("officialKeys".equals(saved)) return "keys";
+        return saved == null ? "chat" : saved;
+    }
+
     private void go(String destination) {
+        destination = nativeDestination(destination);
         if (destination.equals(page)) return;
         if ("settings".equals(page)) settingsTrail.push(settings.navigation());
         trail.push(page);
@@ -330,6 +352,7 @@ public final class MainActivity extends Activity {
             return;
         }
         if ("data".equals(page) && data != null && data.executing()) return;
+        if ("usage".equals(page) && platformUsage != null && platformUsage.backToOverview()) return;
         popPage();
     }
 
@@ -367,6 +390,9 @@ public final class MainActivity extends Activity {
                 setView(wallet.view());
                 break;
             case "usage":
+                showPlatformUsage();
+                break;
+            case "localUsage":
             case "threadUsage":
                 usage =
                         new NativeUsagePage(
@@ -399,24 +425,91 @@ public final class MainActivity extends Activity {
                 if (data == null || !data.isBusy()) data = makeData();
                 setView(data);
                 break;
-            case "checkout":
-            case "transactions":
-            case "officialKeys":
-                platform =
-                        new NativePlatformTasks(
-                                this, en(), accounts.dark(), accounts.fontScale(), this::back);
-                setView(
-                        "checkout".equals(page)
-                                ? platform.checkout(amount)
-                                : "transactions".equals(page)
-                                        ? platform.bills()
-                                        : platform.directory(() -> go("addKey")));
-                break;
             default:
                 page = "chat";
                 setView(chat);
                 renderChat();
         }
+    }
+
+    private void showPlatformUsage() {
+        platformUsage =
+                new NativePlatformUsagePage(
+                        this,
+                        en(),
+                        accounts.dark(),
+                        accounts.fontScale(),
+                        accounts.profile().optString("nickname"),
+                        this::back,
+                        new NativePlatformUsagePage.Actions() {
+                            public void pick() {
+                                MainActivity.this.pick(PICK_USAGE, "*/*");
+                            }
+
+                            public void select(String id) {
+                                updatePlatformUsage(null, id);
+                            }
+
+                            public void local() {
+                                go("localUsage");
+                            }
+                        });
+        setView(platformUsage);
+        updatePlatformUsage(null, null);
+    }
+
+    private void updatePlatformUsage(Uri input, String selectId) {
+        NativePlatformUsagePage view = platformUsage;
+        if (!"usage".equals(page) || view == null) return;
+        final String profile = owner;
+        final long revision = ++usageRevision;
+        final boolean isImport = input != null;
+        if (isImport && !android.content.ContentResolver.SCHEME_CONTENT.equals(input.getScheme())) {
+            view.show(
+                    null,
+                    t("请选择系统文件选择器中的用量报表。", "Choose a usage report from the document picker."));
+            return;
+        }
+        view.loading(
+                isImport ? t("正在导入报表…", "Importing report…") : t("正在读取报表…", "Reading reports…"));
+        android.content.Context app = getApplicationContext();
+        String success = isImport ? t("已导入报表。", "Report imported.") : "";
+        String failure =
+                isImport
+                        ? t(
+                                "导入失败。请选择开放平台的用量 ZIP 或用量明细 CSV，已有报表会保留。",
+                                "Could not import this file. Choose a platform usage ZIP or"
+                                    + " usage-amount CSV. Previously imported reports are kept.")
+                        : t("无法读取已保存的报表。", "Could not read the saved report.");
+        NativePlatformUsageStore.worker.execute(
+                () -> {
+                    NativePlatformUsageStore reports = new NativePlatformUsageStore(app, profile);
+                    NativePlatformUsageStore.Snapshot result = null;
+                    String status = success;
+                    try {
+                        if (isImport) {
+                            try (InputStream source =
+                                    app.getContentResolver().openInputStream(input)) {
+                                if (source == null) throw new java.io.IOException();
+                                reports.importReport(source);
+                            }
+                        } else if (selectId != null) reports.select(selectId);
+                        result = reports.read();
+                    } catch (java.io.IOException | RuntimeException problem) {
+                        status = failure;
+                    }
+                    final NativePlatformUsageStore.Snapshot snapshot = result;
+                    final String message = status;
+                    main.post(
+                            () -> {
+                                if (!isDestroyed()
+                                        && revision == usageRevision
+                                        && owner.equals(profile)
+                                        && "usage".equals(page)) {
+                                    view.show(snapshot, message);
+                                }
+                            });
+                });
     }
 
     private void renderThreadUsage() {
@@ -582,7 +675,7 @@ public final class MainActivity extends Activity {
                 .show();
     }
 
-    private void walletAction(String id, String value) {
+    private void walletAction(String id) {
         switch (id) {
             case "back":
                 back();
@@ -593,12 +686,8 @@ public final class MainActivity extends Activity {
             case "keys":
                 go("keys");
                 break;
-            case "transactions":
-                go("transactions");
-                break;
-            case "checkout":
-                amount = NativeFunding.parseAmount(value).value;
-                if (!amount.isEmpty()) go("checkout");
+            case "usage":
+                go("usage");
                 break;
         }
     }
@@ -872,6 +961,20 @@ public final class MainActivity extends Activity {
                 new Intent(Intent.ACTION_OPEN_DOCUMENT)
                         .addCategory(Intent.CATEGORY_OPENABLE)
                         .setType(mime);
+        if (request == PICK_USAGE) {
+            intent.putExtra(
+                    Intent.EXTRA_MIME_TYPES,
+                    new String[] {
+                        "application/zip",
+                        "application/x-zip-compressed",
+                        "text/csv",
+                        "text/comma-separated-values",
+                        "application/csv",
+                        "text/plain",
+                        "application/vnd.ms-excel",
+                        "application/octet-stream"
+                    });
+        }
         try {
             startActivityForResult(intent, request);
         } catch (ActivityNotFoundException missing) {
@@ -943,6 +1046,11 @@ public final class MainActivity extends Activity {
             return;
         }
         if (status != RESULT_OK || result == null || !owner.equals(pickerOwner)) return;
+        if (request == PICK_USAGE) {
+            if (result.getData() != null && "usage".equals(page))
+                updatePlatformUsage(result.getData(), null);
+            return;
+        }
         if (request == PICK_PHOTO) {
             settings.onPhotoResult(result.getData());
             return;
@@ -1032,10 +1140,9 @@ public final class MainActivity extends Activity {
     protected void onSaveInstanceState(Bundle state) {
         super.onSaveInstanceState(state);
         thread.persist();
-        state.putBundle("walletForm", wallet.saveForm());
+        state.putBundle("wallet", wallet.saveState());
         state.putString("owner", owner);
         state.putString("page", page);
-        state.putString("amount", amount);
         if ("settings".equals(page)) state.putBundle("settingsNavigation", settings.navigation());
         state.putParcelableArrayList("settingsTrail", new ArrayList<>(settingsTrail));
         if (data != null && "data".equals(page)) state.putBundle("data", data.state());

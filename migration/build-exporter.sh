@@ -2,6 +2,8 @@
 set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
 repo=$(cd "$here/.." && pwd)
+native_code=$(sed -nE 's/^[[:space:]]*versionCode[[:space:]]+([0-9]+)[[:space:]]*$/\1/p' "$repo/app/build.gradle")
+[[ $native_code =~ ^[0-9]+$ ]] || { echo 'Cannot read native application versionCode' >&2; exit 1; }
 legacy=${1:-"$repo"}
 output=${2:-"$repo/build/TokenSeek-legacy-migration.apk"}
 work=$(mktemp -d "${TMPDIR:-/tmp}/tokenseek-exporter.XXXXXXXX")
@@ -19,7 +21,7 @@ android {
         applicationId 'io.tokenseek.app'
         minSdk 26
         targetSdk 35
-        versionCode 13
+        versionCode project.property('nativeVersionCode').toInteger()
         versionName '0.9.3-migration'
     }
     compileOptions {
@@ -28,5 +30,5 @@ android {
     }
 }
 GRADLE
-"$legacy/gradlew" -p "$work" :app:assembleDebug
+"$legacy/gradlew" -p "$work" "-PnativeVersionCode=$native_code" :app:assembleDebug
 cp "$work/app/build/outputs/apk/debug/app-debug.apk" "$output"

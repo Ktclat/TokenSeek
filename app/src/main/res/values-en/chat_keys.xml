@@ -1,6 +1,5 @@
 <resources>
     <string name="chat_keys_title">Chat keys</string>
-    <string name="chat_keys_official">Platform API keys</string>
     <string name="chat_keys_account">Device account · %1$s</string>
     <string name="chat_keys_empty">No chat keys yet</string>
     <string name="chat_keys_add">Add existing key</string>

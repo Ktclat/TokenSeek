@@ -10,9 +10,8 @@
     <string name="ac_profile">Edit profile</string>
     <string name="ac_newprofile">Add account</string>
     <string name="ac_keys">Chat keys</string>
-    <string name="ac_official">Platform API keys</string>
-    <string name="ac_wallet">Balance and top-up</string>
-    <string name="ac_usage">Usage</string>
+    <string name="ac_wallet">Balance</string>
+    <string name="ac_usage">Platform usage</string>
     <string name="ac_username">Username</string>
     <string name="ac_nickname">Nickname</string>
     <string name="ac_nick_hint">Defaults to your username</string>
@@ -51,4 +50,10 @@
     <string name="ac_voices_loading">Loading device voices…</string>
     <string name="ac_voices_empty">This device has no installed offline voices for the current language.</string>
     <string name="ac_location_help">Optional. Chats share your selected region with the model.</string>
+    <string name="ac_device_account">Device profile</string>
+    <string name="ac_connect">Connect DeepSeek API</string>
+    <string name="ac_keys_unavailable">Device keys unavailable</string>
+    <string name="ac_keys_not_selected">None selected</string>
+    <string name="ac_key_selected">Selected</string>
+    <string name="ac_key_selected_suffix">Selected · •••• %1$s</string>
 </resources>
