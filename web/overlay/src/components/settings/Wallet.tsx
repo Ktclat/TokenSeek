@@ -21,6 +21,8 @@ export const WalletIcon = () => (
   </svg>
 )
 
+const isRefreshing = (state: WalletState) => state.status === 'loading' || (state.status === 'ready' && Boolean(state.refreshing))
+
 const walletMessage = (state: WalletState): TranslationKey | null => {
   if (state.status === 'unbound') return null
   if (state.status === 'loading') return 'walletLoading'
@@ -43,20 +45,30 @@ const BalanceCard = ({ bound, state, refresh, summary = false }: {
         <span>{t('walletTotal')}</span>
         {summary ? (
           <button type="button" className={styles.textButton} onClick={() => pushSettings('wallet')}>{t('wallet')}</button>
-        ) : bound ? <button type="button" className={styles.textButton} disabled={state.status === 'loading'} onClick={refresh}>
-          {t('walletRefresh')}
+        ) : bound ? <button type="button" className={styles.textButton} disabled={isRefreshing(state)} onClick={refresh}>
+          {isRefreshing(state) ? labels.refreshing : t('walletRefresh')}
         </button> : <button type="button" className={styles.textButton} onClick={() => pushSettings('keys')}>{labels.keys}</button>}
       </header>
       <div aria-live="polite">
         {state.status === 'ready' && state.balance.balance_infos.map(info => (
           <div key={info.currency} className={styles.account}>
             <div className={styles.total}>{info.total_balance} <small>{info.currency}</small></div>
-            {!summary && <dl className={styles.parts}>
-              <div><dt>{t('walletCredit')}</dt><dd>{info.topped_up_balance}</dd></div>
-              <div><dt>{t('walletGrant')}</dt><dd>{info.granted_balance}</dd></div>
-            </dl>}
           </div>
         ))}
+        {!summary && state.status === 'ready' && state.balance.balance_infos.length > 0 && (
+          <details className={styles.details}>
+            <summary>{labels.details}</summary>
+            {state.balance.balance_infos.map(info => (
+              <div key={info.currency} className={styles.breakdown}>
+                {state.balance.balance_infos.length > 1 && <strong>{info.currency}</strong>}
+                <dl className={styles.parts}>
+                  <div><dt>{t('walletCredit')}</dt><dd>{info.topped_up_balance}</dd></div>
+                  <div><dt>{t('walletGrant')}</dt><dd>{info.granted_balance}</dd></div>
+                </dl>
+              </div>
+            ))}
+          </details>
+        )}
         {message && <p className={styles.status}>{t(message)}</p>}
       </div>
     </div>
@@ -80,7 +92,7 @@ export const Wallet = ({ apiKey }: { apiKey: string | null }) => {
   const accountHint = apiKey ? labels.boundHint : labels.signIn
   const native = window.TokenSeekFunding
   const screen = JSON.stringify({
-    page: 'wallet', dark, scale, bound: Boolean(apiKey), canChat, status: state.status,
+    page: 'wallet', dark, scale, bound: Boolean(apiKey), canChat, status: state.status, refreshing: isRefreshing(state),
     message: message ? t(message) : '', accountHint, presets,
     balances: state.status === 'ready' ? state.balance.balance_infos.map(row => ({
       currency: row.currency, total: row.total_balance, credit: row.topped_up_balance, grant: row.granted_balance,
@@ -101,6 +113,9 @@ export const Wallet = ({ apiKey }: { apiKey: string | null }) => {
         case 'refresh': if (apiKey) refresh(); break
         case 'keys': pushSettings('keys'); break
         case 'chat': if (canChat) closeSettings(); break
+        case 'transactions':
+          window.open(platformUrls.transactions, '_blank', 'noopener,noreferrer')
+          break
         case 'checkout':
           if (typeof detail.amount === 'string') {
             const amount = parseAmount(detail.amount).amount
@@ -123,7 +138,7 @@ export const Wallet = ({ apiKey }: { apiKey: string | null }) => {
     <section className={styles.wallet} aria-label={labels.title}>
       <BalanceCard bound={Boolean(apiKey)} {...balance} />
       {state.status === 'invalid' && <Button size="m" variant="outlined" onClick={() => pushSettings('keys')}>{labels.keys}</Button>}
-      <FundingForm accountHint={accountHint} />
+      <FundingForm accountHint={accountHint} largeType={scale > 100} />
       {canChat && <button type="button" className={styles.chat} onClick={closeSettings}>{t('walletChat')}</button>}
     </section>
   )

@@ -6,9 +6,11 @@ import android.content.Context;
 import android.content.res.ColorStateList;
 import android.graphics.Color;
 import android.graphics.Typeface;
+import android.graphics.drawable.Drawable;
 import android.graphics.drawable.GradientDrawable;
 import android.graphics.drawable.RippleDrawable;
 import android.os.Build;
+import android.os.Bundle;
 import android.text.Editable;
 import android.text.InputType;
 import android.text.SpannableString;
@@ -18,10 +20,13 @@ import android.text.style.RelativeSizeSpan;
 import android.text.TextWatcher;
 import android.view.Gravity;
 import android.view.View;
+import android.view.accessibility.AccessibilityNodeInfo;
 import android.view.inputmethod.EditorInfo;
+import android.view.inputmethod.InputMethodManager;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.FrameLayout;
+import android.widget.GridLayout;
 import android.widget.ImageButton;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
@@ -57,8 +62,11 @@ final class NativeFunding extends FrameLayout {
         return "0.00".equals(canonical) ? new Amount("", "invalid") : new Amount(canonical, "");
     }
 
+    private static final String CUSTOM = "custom";
     private final Listener listener;
-    private final List<Button> presets = new ArrayList<>();
+    private final List<Button> choices = new ArrayList<>();
+    private String selection = "";
+    private boolean detailsExpanded;
     private JSONObject labels = new JSONObject();
     private String appearance = "";
     private boolean dark;
@@ -66,9 +74,11 @@ final class NativeFunding extends FrameLayout {
     private LinearLayout balance;
     private LinearLayout body;
     private ScrollView scroll;
+    private LinearLayout field;
     private EditText input;
     private TextView error;
     private TextView hint;
+    private TextView manualCopy;
     private Button checkout;
     private Button copy;
     private Button chat;
@@ -97,7 +107,7 @@ final class NativeFunding extends FrameLayout {
             boolean editing = input != null && input.hasFocus();
             int position = scroll == null ? 0 : scroll.getScrollY();
             build(suggestions == null ? new JSONArray() : suggestions, amount);
-            if (editing) { input.requestFocus(); input.setSelection(amount.length()); }
+            if (editing && CUSTOM.equals(selection)) { input.requestFocus(); input.setSelection(amount.length()); }
             scroll.post(() -> scroll.scrollTo(0, position));
         }
         updateBalance(screen);
@@ -107,7 +117,7 @@ final class NativeFunding extends FrameLayout {
 
     private void build(JSONArray suggestions, String amount) {
         removeAllViews();
-        presets.clear();
+        choices.clear();
         setBackgroundColor(dark ? 0xff16171a : 0xfff6f7f9);
         LinearLayout column = stack();
         addView(column, new LayoutParams(-1, -1));
@@ -124,7 +134,9 @@ final class NativeFunding extends FrameLayout {
         TextView title = label(word("title"), 18, ink(), true);
         title.setGravity(Gravity.CENTER);
         bar.addView(title, weight());
-        bar.addView(new View(getContext()), dp(54), 1);
+        Button bills = textAction(word("transactions"), v -> listener.action("transactions", ""));
+        bills.setPadding(0, dp(4), dp(4), dp(4));
+        bar.addView(bills, dp(54), -2);
         if (Build.VERSION.SDK_INT >= 28) {
             title.setAccessibilityHeading(true);
             setAccessibilityPaneTitle(word("title"));
@@ -153,13 +165,16 @@ final class NativeFunding extends FrameLayout {
         balance.addView(header);
         header.addView(label(word("total"), 15, muted(), false), weight());
         if (screen.optBoolean("bound")) {
-            Button refresh = textAction(word("refresh"), v -> listener.action("refresh", ""));
-            enable(refresh, !"loading".equals(screen.optString("status")));
+            boolean loading = screen.optBoolean("refreshing") || "loading".equals(screen.optString("status"));
+            String caption = loading ? labels.optString("refreshing", word("refresh")) : word("refresh");
+            Button refresh = textAction(caption, v -> listener.action("refresh", ""));
+            enable(refresh, !loading);
             header.addView(refresh);
         } else {
             header.addView(textAction(word("keys"), v -> listener.action("keys", "")));
         }
         JSONArray values = screen.optJSONArray("balances");
+        List<View> breakdowns = new ArrayList<>();
         if (values != null) for (int i = 0; i < values.length(); i++) {
             JSONObject info = values.optJSONObject(i);
             if (info == null) continue;
@@ -185,7 +200,10 @@ final class NativeFunding extends FrameLayout {
             second.setMarginStart(dp(12));
             details.addView(balancePart("grant", info.optString("grant")), second);
             balance.addView(details, spaced(12));
+            details.setVisibility(detailsExpanded ? VISIBLE : GONE);
+            breakdowns.add(details);
         }
+        if (!breakdowns.isEmpty()) addDetailsToggle(breakdowns);
         String message = screen.optString("message");
         if (!message.isEmpty() && screen.optBoolean("bound")) {
             TextView status = label(message, 14, muted(), false);
@@ -195,6 +213,36 @@ final class NativeFunding extends FrameLayout {
         if ("invalid".equals(screen.optString("status"))) {
             balance.addView(button(word("keys"), false, v -> listener.action("keys", "")), spaced(10));
         }
+    }
+
+    private void addDetailsToggle(List<View> breakdowns) {
+        Button toggle = textAction(word("details"), v -> {
+            detailsExpanded = !detailsExpanded;
+            for (View details : breakdowns) details.setVisibility(detailsExpanded ? VISIBLE : GONE);
+            updateDetailsToggle((Button) v);
+        });
+        toggle.setGravity(Gravity.START | Gravity.CENTER_VERTICAL);
+        toggle.setPadding(0, 0, dp(4), 0);
+        toggle.setAccessibilityDelegate(new View.AccessibilityDelegate() {
+            @Override public void onInitializeAccessibilityNodeInfo(View view, AccessibilityNodeInfo info) {
+                super.onInitializeAccessibilityNodeInfo(view, info);
+                info.addAction(detailsExpanded ? AccessibilityNodeInfo.AccessibilityAction.ACTION_COLLAPSE
+                        : AccessibilityNodeInfo.AccessibilityAction.ACTION_EXPAND);
+            }
+            @Override public boolean performAccessibilityAction(View view, int action, Bundle args) {
+                if (action == (detailsExpanded ? AccessibilityNodeInfo.ACTION_COLLAPSE : AccessibilityNodeInfo.ACTION_EXPAND))
+                    return view.performClick();
+                return super.performAccessibilityAction(view, action, args);
+            }
+        });
+        updateDetailsToggle(toggle);
+        balance.addView(toggle, spaced(2));
+    }
+
+    private void updateDetailsToggle(Button toggle) {
+        Drawable arrow = getContext().getDrawable(detailsExpanded ? R.drawable.funding_collapse : R.drawable.keys_expand).mutate();
+        arrow.setTint(accent());
+        toggle.setCompoundDrawablesRelativeWithIntrinsicBounds(null, null, arrow, null);
     }
 
     private LinearLayout balancePart(String key, String amount) {
@@ -216,13 +264,21 @@ final class NativeFunding extends FrameLayout {
         header.addView(heading, weight());
         copy = textAction(word("copy"), v -> copyAmount());
         header.addView(copy);
-        LinearLayout field = row();
+        AmountChoices options = new AmountChoices();
+        form.addView(options, spaced(8));
+        for (int i = 0; i < suggestions.length(); i++) {
+            String value = suggestions.optString(i);
+            String canonical = parseAmount(value).value;
+            if (!canonical.isEmpty()) addChoice(options, canonical, "¥" + value);
+        }
+        addChoice(options, CUSTOM, word("customChoice"));
+        field = row();
         field.setBackground(shape(dark ? 0xff2a2b31 : 0xfff4f5f8, false, 12));
         field.setPadding(dp(14), 0, dp(10), 0);
-        form.addView(field, spaced(6));
+        form.addView(field, spaced(12));
         input = new EditText(getContext());
         input.setId(View.generateViewId());
-        heading.setLabelFor(input.getId());
+        input.setHint(word("custom"));
         input.setSingleLine(true);
         // A numeric IME is convenient; filtering pasted text could silently turn "-5" into "5".
         input.setRawInputType(InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_DECIMAL);
@@ -234,7 +290,6 @@ final class NativeFunding extends FrameLayout {
         input.setFontFeatureSettings("tnum");
         input.setMinHeight(dp(54));
         input.setPadding(0, dp(6), dp(6), dp(6));
-        input.setHint("0.00");
         input.setText(raw);
         input.setImportantForAutofill(View.IMPORTANT_FOR_AUTOFILL_NO);
         field.addView(input, weight());
@@ -242,47 +297,69 @@ final class NativeFunding extends FrameLayout {
         error = label("", 13, dark ? 0xffffa5a5 : 0xffa02a29, false);
         error.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);
         form.addView(error, spaced(4));
-        LinearLayout options = row();
-        form.addView(options, spaced(10));
-        for (int i = 0; i < suggestions.length(); i++) {
-            String value = suggestions.optString(i);
-            String canonical = parseAmount(value).value;
-            if (canonical.isEmpty()) continue;
-            Button choice = button("¥" + value, false, v -> {
-                input.setText(value);
-                input.setSelection(value.length());
-            });
-            choice.setTag(canonical);
-            presets.add(choice);
-            LinearLayout.LayoutParams cell = weight();
-            if (presets.size() > 1) cell.setMarginStart(dp(8));
-            options.addView(choice, cell);
-        }
         checkout = button(word("checkout"), true, v -> {
-            String selected = parseAmount(input.getText().toString()).value;
+            String selected = selectedAmount().value;
             if (!selected.isEmpty()) listener.action("checkout", selected);
         });
         form.addView(checkout, spaced(16));
         hint = label("", 13, muted(), false);
         form.addView(hint, spaced(10));
+        manualCopy = label("", 14, ink(), false);
+        manualCopy.setTextIsSelectable(true);
+        manualCopy.setVisibility(GONE);
+        form.addView(manualCopy, spaced(8));
         input.addTextChangedListener(new TextWatcher() {
             @Override public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
-            @Override public void onTextChanged(CharSequence s, int start, int before, int count) { updateAmount(s.toString()); }
+            @Override public void onTextChanged(CharSequence s, int start, int before, int count) { updateAmount(); }
             @Override public void afterTextChanged(Editable s) {}
         });
-        updateAmount(raw);
+        updateAmount();
     }
 
-    private void updateAmount(String raw) {
-        Amount amount = parseAmount(raw);
+    private void addChoice(AmountChoices options, String id, String caption) {
+        Button choice = button(caption, false, v -> choose(id));
+        choice.setTag(id);
+        choices.add(choice);
+        options.addView(choice);
+    }
+
+    private void choose(String id) {
+        InputMethodManager keyboard = getContext().getSystemService(InputMethodManager.class);
+        if (!CUSTOM.equals(id) && CUSTOM.equals(selection)) {
+            if (keyboard != null) keyboard.hideSoftInputFromWindow(input.getWindowToken(), 0);
+            if (input.hasFocus()) body.requestFocus();
+        }
+        selection = id;
+        updateAmount();
+        if (CUSTOM.equals(id)) {
+            EditText editor = input;
+            editor.requestFocus();
+            editor.setSelection(editor.length());
+            editor.post(() -> {
+                if (keyboard != null && editor == input && editor.hasFocus() && CUSTOM.equals(selection))
+                    keyboard.showSoftInput(editor, InputMethodManager.SHOW_IMPLICIT);
+            });
+        }
+    }
+
+    private Amount selectedAmount() {
+        return parseAmount(CUSTOM.equals(selection) ? input.getText().toString() : selection);
+    }
+
+    private void updateAmount() {
+        Amount amount = selectedAmount();
+        field.setVisibility(CUSTOM.equals(selection) ? VISIBLE : GONE);
+        manualCopy.setVisibility(GONE);
         error.setText(word(amount.error));
         error.setVisibility(amount.error.isEmpty() ? GONE : VISIBLE);
         enable(checkout, !amount.value.isEmpty());
+        String visibleAmount = amount.value.endsWith(".00") ? amount.value.substring(0, amount.value.length() - 3) : amount.value;
+        checkout.setText(visibleAmount.isEmpty() ? word("checkout") : word("checkout") + " · ¥" + visibleAmount);
         enable(copy, !amount.value.isEmpty());
         copy.setVisibility(amount.value.isEmpty() ? INVISIBLE : VISIBLE);
         hint.setVisibility(amount.value.isEmpty() ? GONE : VISIBLE);
-        for (Button preset : presets) {
-            boolean selected = amount.value.equals(preset.getTag());
+        for (Button preset : choices) {
+            boolean selected = selection.equals(preset.getTag());
             if (selected == preset.isSelected()) continue;
             preset.setSelected(selected);
             preset.setTextColor(selected ? accent() : ink());
@@ -293,7 +370,7 @@ final class NativeFunding extends FrameLayout {
     }
 
     private void copyAmount() {
-        String value = parseAmount(input.getText().toString()).value;
+        String value = selectedAmount().value;
         if (value.isEmpty()) return;
         try {
             ClipboardManager clipboard = getContext().getSystemService(ClipboardManager.class);
@@ -302,9 +379,45 @@ final class NativeFunding extends FrameLayout {
             // Android 13+ shows its own confirmation.
             if (Build.VERSION.SDK_INT < 33) Toast.makeText(getContext(), word("copied"), Toast.LENGTH_SHORT).show();
         } catch (RuntimeException unavailable) {
-            input.requestFocus();
-            input.selectAll();
+            if (CUSTOM.equals(selection)) {
+                input.requestFocus();
+                input.selectAll();
+            } else {
+                manualCopy.setText(value);
+                manualCopy.setVisibility(VISIBLE);
+            }
             Toast.makeText(getContext(), word("copyFailed"), Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    /** Keeps each row's targets equal as the viewport, locale, or preferred text size changes. */
+    private final class AmountChoices extends GridLayout {
+        private int columns;
+
+        AmountChoices() { super(NativeFunding.this.getContext()); }
+
+        @Override protected void onMeasure(int widthSpec, int heightSpec) {
+            int cell = dp(68);
+            for (Button choice : choices) {
+                int text = (int) Math.ceil(choice.getPaint().measureText(choice.getText().toString()));
+                cell = Math.max(cell, text + choice.getPaddingStart() + choice.getPaddingEnd());
+            }
+            boolean largeType = scale > 1f || getResources().getConfiguration().fontScale > 1f;
+            int available = MeasureSpec.getSize(widthSpec);
+            int count = !largeType && available >= cell * 4 + dp(8) * 3 ? 4 : 2;
+            if (columns != count) {
+                columns = count;
+                for (int i = 0; i < getChildCount(); i++) {
+                    GridLayout.LayoutParams cellParams = new GridLayout.LayoutParams(
+                            GridLayout.spec(i / count, GridLayout.FILL), GridLayout.spec(i % count, GridLayout.FILL, 1f));
+                    cellParams.width = 0;
+                    cellParams.height = LayoutParams.WRAP_CONTENT;
+                    cellParams.setMarginStart(i % count == 0 ? 0 : dp(8));
+                    cellParams.topMargin = i < count ? 0 : dp(8);
+                    getChildAt(i).setLayoutParams(cellParams);
+                }
+            }
+            super.onMeasure(widthSpec, heightSpec);
         }
     }
 

@@ -36,21 +36,21 @@
         <TextView android:id="@+id/platform_notice_text" android:layout_width="match_parent"
             android:layout_height="wrap_content" android:textSize="14sp" android:accessibilityLiveRegion="polite"
             android:textColor="@color/platform_ink" />
-        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:gravity="end">
+        <io.tokenseek.app.CheckoutActions android:layout_width="match_parent" android:layout_height="wrap_content" android:gravity="end">
             <Button android:id="@+id/platform_dismiss" style="@style/PlatformAction"
                 android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/platform_dismiss"/>
             <Button android:id="@+id/platform_notice_action" style="@style/PlatformAction"
                 android:layout_width="wrap_content" android:layout_height="wrap_content"/>
-        </LinearLayout>
+        </io.tokenseek.app.CheckoutActions>
     </LinearLayout>
-    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
-        android:gravity="end" android:orientation="horizontal" android:paddingEnd="8dp">
+    <io.tokenseek.app.CheckoutActions android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:gravity="end" android:paddingEnd="8dp">
         <Button android:id="@+id/platform_fill_amount" style="@style/PlatformAction"
             android:layout_width="wrap_content" android:layout_height="wrap_content" android:visibility="gone" />
         <Button android:id="@+id/platform_qr" style="@style/PlatformAction"
             android:layout_width="wrap_content" android:layout_height="wrap_content" android:visibility="gone"
             android:text="@string/payment_qr_action" />
-    </LinearLayout>
+    </io.tokenseek.app.CheckoutActions>
     <Button android:id="@+id/platform_key_view" style="@style/PlatformAction"
         android:layout_width="wrap_content" android:layout_height="wrap_content"
         android:layout_gravity="end" android:layout_marginEnd="8dp" android:visibility="gone" />

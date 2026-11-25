@@ -4,7 +4,7 @@ import { classifyApiError } from './api/errors.js'
 
 export type WalletState =
   | { status: 'unbound' | 'loading' | 'invalid' | 'error' }
-  | { status: 'ready'; balance: Awaited<ReturnType<typeof getBalance>> }
+  | { status: 'ready'; balance: Awaited<ReturnType<typeof getBalance>>; refreshing?: boolean }
 
 const unbound: WalletState = { status: 'unbound' }
 const loading: WalletState = { status: 'loading' }
@@ -29,7 +29,9 @@ function refresh() {
   if (!key) return
   const request = new AbortController()
   controller = request
-  publish(loading)
+  if (snapshot.status === 'ready') {
+    if (!snapshot.refreshing) publish({ ...snapshot, refreshing: true })
+  } else if (snapshot !== loading) publish(loading)
   const timeout = setTimeout(() => request.abort(), 15000)
   void getBalance(key, request.signal)
     .then(balance => { if (controller === request) publish({ status: 'ready', balance }) })
@@ -54,7 +56,11 @@ export function useBalance(apiKey: string | null) {
       window.addEventListener('tokenseek:resume', onReturn)
       document.addEventListener('visibilitychange', onReturn)
     }
-    if (apiKey !== activeKey) { activeKey = apiKey; refresh() }
+    if (apiKey !== activeKey) {
+      activeKey = apiKey
+      publish(loading)
+      refresh()
+    }
     return () => {
       if (--users !== 0) return
       window.removeEventListener('focus', onReturn)

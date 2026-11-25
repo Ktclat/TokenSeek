@@ -6,6 +6,7 @@ export const platformUrls = {
   account: 'https://platform.deepseek.com/',
   login: 'https://platform.deepseek.com/sign_in',
   topUp: 'https://platform.deepseek.com/top_up',
+  transactions: 'https://platform.deepseek.com/transactions',
   keys: 'https://platform.deepseek.com/api_keys',
 }
 

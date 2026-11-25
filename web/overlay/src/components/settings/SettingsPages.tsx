@@ -8,6 +8,9 @@ import { useIsMobile, useMobileViewport } from '../../app/viewport.js'
 import { AccountFlow, useAccountText } from './AccountFlow.js'
 import { Button } from '../base/Button.js'
 import { Wallet } from './Wallet.js'
+import { useFundingText } from './Funding.js'
+import { platformUrls } from './OfficialPlatform.js'
+import walletStyles from './Wallet.module.css'
 import { ProfileSettings, useProfileText } from './ProfileSettings.js'
 import { AccountKey } from './AccountKey.js'
 import { NativeChatKeyPage } from './NativeChatKeyPage.js'
@@ -23,6 +26,7 @@ export const SettingsPages = ({ page, backDisabled, children }: {
   const t = useTranslate()
   const copy = usePageText()
   const account = useAccountText()
+  const funding = useFundingText()
   const profileText = useProfileText()
   const prefs = usePreferenceLabels()
   const titleRef = useRef<HTMLHeadingElement>(null)
@@ -33,7 +37,7 @@ export const SettingsPages = ({ page, backDisabled, children }: {
   const localProvince = isChineseBrowser()
   const titles: Record<SettingsSection, string> = {
     profiles: profileText.profiles,
-    home: t('settings'), account: account.title, wallet: locale === 'zh-CN' ? '余额与充值' : 'Balance and top-up', keys: prefs.keys, general: t('settingDialogAsideGeneralOptionLabel'),
+    home: t('settings'), account: account.title, wallet: funding.title, keys: prefs.keys, general: t('settingDialogAsideGeneralOptionLabel'),
     data: t('settingDialogAsideDataOptionLabel'), theme: prefs.theme, font: prefs.font, personalization: prefs.personalization,
     language: t('settingsLocalePreference'), voice: t('settingsTtsVoice'),
     location: t('settingsLocation'), cities: t('settingsLocationCity'),
@@ -156,6 +160,9 @@ export const SettingsPages = ({ page, backDisabled, children }: {
             <IconChevronRightOutline14 />
           </button>
           <h1 ref={titleRef} id="tokenseek-settings-title" tabIndex={-1}>{titles[page]}</h1>
+          {page === 'wallet' && !window.TokenSeekFunding && (
+            <a href={platformUrls.transactions} target="_blank" rel="noopener noreferrer" className={walletStyles.bills}>{funding.transactions}</a>
+          )}
           {page === 'account' && <button type="button" className={styles.returnChat} aria-label={t('walletChat')} title={t('walletChat')} onClick={closeSettings}>
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" aria-hidden="true">
               <path d="M20 11.2c0 4.05-3.55 7.3-8 7.3-1.17 0-2.3-.22-3.32-.61L4.2 19.44l1.36-3.97A6.87 6.87 0 0 1 4 11.2C4 7.18 7.57 4 12 4s8 3.18 8 7.2Z" />
