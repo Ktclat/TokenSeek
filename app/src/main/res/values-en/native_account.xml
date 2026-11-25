@@ -1,6 +1,9 @@
 <resources>
     <string name="ac_settings">Settings</string>
     <string name="ac_account">Account</string>
+    <string name="ac_web_login">Sign in to DeepSeek Platform</string>
+    <string name="ac_browser_picker">Choose a browser</string>
+    <string name="ac_browser_unavailable">Install or enable a browser, then try signing in again.</string>
     <string name="ac_theme">Appearance</string>
     <string name="ac_font">Font size</string>
     <string name="ac_personalization">Personalization</string>

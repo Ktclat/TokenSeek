@@ -1,6 +1,9 @@
 <resources>
     <string name="ac_settings">设置</string>
     <string name="ac_account">账户</string>
+    <string name="ac_web_login">登录开放平台</string>
+    <string name="ac_browser_picker">选择浏览器</string>
+    <string name="ac_browser_unavailable">请安装或启用浏览器后重试登录。</string>
     <string name="ac_theme">外观</string>
     <string name="ac_font">字体大小</string>
     <string name="ac_personalization">个性化</string>

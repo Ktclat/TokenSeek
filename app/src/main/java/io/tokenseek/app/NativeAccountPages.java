@@ -274,6 +274,7 @@ final class NativeAccountPages extends FrameLayout {
                 groups.put(group(null, link("profiles")));
                 break;
             case "account":
+                groups.put(group(null, link("webLogin", PlatformWebLogin.SIGN_IN.getHost())));
                 groups.put(group(strings.getString(R.string.ac_device_account), link("profile", profile.optString("nickname"))));
                 groups.put(apiGroup(profile.optString("id")));
                 break;
@@ -412,6 +413,7 @@ final class NativeAccountPages extends FrameLayout {
             setLocation(action);
         } else {
             switch (action) {
+                case "webLogin": PlatformWebLogin.open(activity, strings, store.dark()); break;
                 case "chat": case "wallet": case "usage": case "data": host.open(action); break;
                 default: push(action);
             }
@@ -444,6 +446,7 @@ final class NativeAccountPages extends FrameLayout {
         switch (key) {
             case "home": id = R.string.ac_settings; break;
             case "account": id = R.string.ac_account; break;
+            case "webLogin": id = R.string.ac_web_login; break;
             case "theme": id = R.string.ac_theme; break;
             case "font": id = R.string.ac_font; break;
             case "personalization": id = R.string.ac_personalization; break;
