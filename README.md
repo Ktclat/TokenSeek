@@ -1,50 +1,55 @@
-# TokenSeek 安卓客户端
+# TokenSeek
 
-TokenSeek 是独立的 DeepSeek Android 客户端。0.10.2 使用 Android 原生控件绘制聊天、侧栏、设置、用量、账户、密钥和余额。聊天通过当前账户选用的开放平台 API 密钥调用。[DeepSeek API](https://api-docs.deepseek.com/zh-cn/)
+TokenSeek 是面向 DeepSeek 开放平台的独立 Android 客户端。你可以使用自己的 API 密钥与 Flash、Pro 对话，整理聊天记录，查看每次回复的 token 用量和开放平台余额。聊天、账户、用量和设置均使用 Android 原生控件。
 
-## 开放平台的原生前端方案
+当前版本为 **0.10.2**，支持 **Android 8.0（API 26）及以上版本**。
 
-网页登录由 DeepSeek 处理。登录以外的业务页面由 Android 控件绘制。平台密钥、用量和订单状态以 DeepSeek 返回的数据为准。浏览器保存网页登录会话，TokenSeek 执行账户管理操作还需要取得对应的官方授权。
+## 开始使用
 
-| 页面 | 原生交互与数据来源 | 0.10.2 的接入情况 |
-| --- | --- | --- |
-| API 密钥 | 列出官方返回的密钥名称和 Tracking ID，支持创建、改名和撤销。新密钥创建时可选择加密保存，用于聊天。 | 已支持验证、选用和管理本机保存的密钥。远程密钥目录与写入操作待接入。 |
-| 账户用量 | 打开页面即查询所选时段内全部密钥的用量。原生页面展示分日趋势和密钥明细，切换日期或密钥时重新查询。刷新后能看到其他设备已入账的请求。 | 可查看已有报表和对话用量。在线账户统计待接入。 |
-| 余额 | 按币种显示可用余额、充值余额和赠金，点击刷新时查询官方余额。 | 已接入官方余额接口，使用当前选用的聊天密钥。 |
-| 充值与账单 | 在应用内选金额和支付方式，由 DeepSeek 创建订单，再唤起相应钱包确认支付。返回后查询官方订单状态，更新原生账单和余额。 | 官方下单、支付凭据和交易记录待接入。 |
+1. 安装调试 APK。可以从仓库中一次成功的手动构建下载，也可以自行构建。[构建与验证](#构建与验证)
+2. 打开对话侧栏，点左下角头像进入「账户」。在「连接 DeepSeek API」输入已有的开放平台 API 密钥，点「验证并选用」。应用向 DeepSeek 验证密钥后，使用 Android Keystore 保护本机保存的凭据。
+3. 回到对话，在输入框选择 Flash 或 Pro 后发送消息。点右上角可新建对话，横向拖动可打开侧栏，查看、置顶对话或将其归入项目。
 
-## 账户与聊天
+对话支持流式回复、停止生成和分支。Flash 可处理附件和调用网页工具。语音输入和朗读取决于设备提供的语音服务。[DeepSeek 网页工具文档](https://api-docs.deepseek.com/guides/web_tools/)
 
-在侧栏点头像打开「账户」，点右下角菜单直接打开「设置」。「切换账户」位于设置首页底部。各本机账户分别保存昵称、头像、API 密钥、对话、草稿、项目和回答偏好。昵称默认使用用户名。外观、字体大小、个性化和通用偏好可在设置中调整。
+「账户 → 登录开放平台」通过浏览器打开 DeepSeek 官方登录页，密码和验证码由官网处理。登录会话保存在浏览器中。应用内聊天和余额查询使用当前选中的 API 密钥，需要单独连接。[DeepSeek 开放平台登录](https://platform.deepseek.com/sign_in) · [API 认证说明](https://api-docs.deepseek.com/zh-cn/api/deepseek-api/)
 
-点「账户 → 登录开放平台」可打开 DeepSeek 官方网页登录页。支持 Custom Tabs 的浏览器会使用 TokenSeek 配置的明暗工具栏和返回图标，其他浏览器使用自身界面。密码、验证码和登录结果由官网处理。网页会话由浏览器管理，关闭页面可回到应用。网页登录不会自动绑定聊天密钥或同步账户用量。[DeepSeek 开放平台登录](https://platform.deepseek.com/sign_in)
+## 账户、用量与余额
 
-在「账户 → 连接 DeepSeek API」输入已有密钥，应用会向 DeepSeek 验证，成功后通过 Android Keystore 加密保存。「聊天密钥」可切换密钥、修改本机备注和从当前设备移除密钥。该流程验证的是 API 调用权限。本机用户名和头像可以自行设置。DeepSeek 已公开的 DSH 账户模块描述了其自身 Web 和桌面客户端的授权流程，目前仓库没有分配给 TokenSeek 的登录配置或平台管理权限。[官方 API 认证](https://api-docs.deepseek.com/zh-cn/api/deepseek-api/) · [DSH 官方账户模块](https://github.com/deepseek-ai/deepseek-harness/blob/master/packages/account/deepseek-account/README.zh.md)
+| 入口 | 当前版本可查看或管理的内容 |
+| --- | --- |
+| 输入框中的用量圆环 | 当前分支的剩余上下文估算，以及整段对话或单条回复的用量。已确认的 token 数量取自 API 响应，缺少最终用量的请求会单独标记。 |
+| 账户 → 开放平台用量 | 在原生页面查看已有官方报表，支持用量 ZIP 或 `amount-*.csv`。可按密钥或模型查看明细，含费用记录时按币种汇总。统计范围取决于报表的时段和密钥，可涵盖来自其他设备的请求。 |
+| 账户 → 余额 | 通过官方余额接口按币种查询总余额、充值余额和赠送余额，支持手动刷新。 |
+| 账户 → 聊天密钥 | 验证、切换、备注或移除当前账户保存在此设备的 API 密钥。 |
+| 设置 → 切换账户 | 切换本机账户及其对话、草稿、项目和聊天密钥。可在账户页修改昵称和头像，在设置中调整外观、字号和个性化偏好。 |
 
-在输入框选择 Flash 或 Pro，点右上角创建对话。侧栏支持拖动、置顶及项目分组。聊天支持流式响应、停止生成、分支以及设备提供的语音功能。Flash 支持文件与官方网页工具。[官方聊天 Demo](https://github.com/deepseek-ai/chat-demo) · [官方工具文档](https://api-docs.deepseek.com/guides/web_tools/)
-
-## 用量
-
-0.10.2 的「账户 → 开放平台用量」读取离线报表。选择已有的用量 ZIP，或解压后的 `amount-*.csv`，即可查看其中的请求与 token 用量。ZIP 含受支持的费用明细时，另按币种显示费用。报表可包含其他设备和应用发起的请求，范围取决于导出时所选的时间窗和密钥。多份报表按本机账户保存，可切换查看。[官方用量导出说明，见「如何分 key 查看用量」](https://static.deepseek.com/faq/index.html?lang=zh)
-
-点聊天输入框的圆环可查看当前分支的上下文估算、整段对话或单条回复的用量。已确认的 token 取自 API 响应的最终记录，缺少最终记录的请求单独标记。[用量字段](https://api-docs.deepseek.com/zh-cn/api/create-message/)
-
-## 余额与充值
-
-「账户 → 余额」通过官方 API 按币种读取总余额、充值余额和赠金。应用内充值下单、唤起支付钱包和远程管理全部密钥仍待取得适用于 TokenSeek 的官方接口。[官方余额接口](https://api-docs.deepseek.com/zh-cn/api/get-user-balance/)
+尚待接入的开放平台功能包括按时段在线查询账户全部密钥的用量、列出和管理平台上的全部密钥、通过官方订单充值、唤起支付宝或微信支付，以及查询交易记录。这些功能需要适用于 TokenSeek 的官方账户授权与相应接口。[余额接口](https://api-docs.deepseek.com/zh-cn/api/get-user-balance/) · [用量字段](https://api-docs.deepseek.com/zh-cn/api/create-message/)
 
 ## 备份与升级
 
-0.10.0 或 0.10.1 可直接覆盖升级。若从 0.9.2 升级且希望保留账户、聊天、草稿、附件和设置，请在原设备覆盖安装同签名的离线迁移工具，点「准备迁移」。看到已准备的对话数后，覆盖安装 0.10.2，在首次打开时确认合并。保留应用数据及原有签名，密钥可沿用原来的 Android Keystore 条目。[迁移说明](migration/README.md)
+- 在**「设置 → 数据管理」**导出当前账户的聊天 ZIP，或从备份恢复。默认合并模式保留同 ID 的已有对话，选择覆盖时会再次确认。API 密钥和登录凭据不包含在备份中。
+- 从 **0.10.0 或 0.10.1** 升级时，使用与已安装版本签名相同的 APK 覆盖安装即可保留应用数据。
+- 从 **0.9.2 或更早版本** 迁移账户、草稿、附件和设置时，先在原设备覆盖安装同签名的离线迁移工具，点「准备迁移」，再覆盖安装同签名的原生版并确认合并。若只需恢复已导出的聊天 ZIP，可直接在新版导入。[旧版迁移说明](migration/README.md)
 
-如果已从旧版导出聊天 ZIP，可以直接在新版「设置 → 数据管理」选择对应账户的备份。默认合并会保留同 ID 的已有会话，覆盖前会再次确认。聊天 ZIP 不含 API 密钥和登录凭据。
+## 构建与验证
 
-## 构建
+### 在 GitHub Actions 手动构建
 
-需要 JDK 17、Android SDK Platform 35 与 Build Tools 35.0.0。最低支持 Android 8.0。运行以下命令生成 Android 调试包并检查原生界面约束。
+1. 打开仓库的 **Actions → Build Android APK**，选择 **Run workflow**。[打开工作流](https://github.com/Ktclat/TokenSeek/actions/workflows/android-debug.yml)
+2. **Use workflow from** 保留 `main`。在 **Source branch, tag, or commit** 指定应用源码，默认 `feature/android-native` 对应当前原生版，也可以填写其他分支、标签或完整提交 SHA。单击 **Run workflow**。
+3. 工作流运行 Android Lint、原生界面检查和 Android 14（API 34）模拟器测试，并校验 APK。成功后，在运行详情的 **Artifacts** 下载并解压构建产物，可得到 `TokenSeek-<版本>-debug.apk` 和 `SHA256SUMS`。在解压目录执行 `sha256sum -c SHA256SUMS` 可校验下载的 APK。
+
+GitHub 托管运行器使用临时调试签名，不同次构建的签名可能不同。Android 仅允许同签名安装包覆盖升级。有本机数据时，请先在「设置 → 数据管理」备份对话。如需连续覆盖安装并保留完整应用数据，请使用自己的固定签名构建。
+
+### 本地构建
+
+安装 JDK 17、Android SDK Platform 35 和 Build Tools 35.0.0，配置 `ANDROID_HOME` 或在本机 `local.properties` 中设置 `sdk.dir`。在仓库根目录使用随项目提供的 Gradle Wrapper 构建并检查代码。
 
 ```sh
 ./gradlew :app:assembleDebug :app:testDebugUnitTest :app:lintDebug
 ```
 
-APK 位于 `app/build/outputs/apk/debug/app-debug.apk`。应用界面的长期约束见 [AGENTS.md](AGENTS.md)。
+APK 输出到 `app/build/outputs/apk/debug/app-debug.apk`。连接 Android 8.0 及以上设备或启动模拟器后，可运行 `./gradlew :app:connectedDebugAndroidTest` 执行设备测试。
+
+新增页面请沿用 Android 原生控件。官方登录使用浏览器，其余界面在应用内实现。构建会运行 `verifyNativeScreens` 检查此约定。[原生界面与平台接入约定](AGENTS.md)
