@@ -1,248 +1,273 @@
 package io.tokenseek.app;
 
 import android.content.Context;
-import android.content.res.TypedArray;
-import android.graphics.Typeface;
-import android.os.Build;
-import android.view.Gravity;
 import android.view.View;
 import android.webkit.WebView;
 import android.widget.Button;
 import android.widget.FrameLayout;
-import android.widget.LinearLayout;
-import android.widget.ScrollView;
-import android.widget.TextView;
-import android.widget.Toast;
 
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
-
-/** Native presentation of the signed-in platform's currently rendered, masked API-key list. */
+/** Owns the native directory. The official window retains the authenticated account session. */
 final class OfficialKeyDirectory {
-    private static final String KEY_PAGE = "window === window.top && location.origin === 'https://platform.deepseek.com'"
-            + " && location.pathname === '/api_keys'";
-    private static final java.util.regex.Pattern MASKED = java.util.regex.Pattern.compile(
-            "(?i)(?:sk-[a-z0-9_-]{0,8})?(?:\\*{3,}|[•●·]{3,}|\\.{3,}|…+)[a-z0-9_-]{0,8}");
-    private final FrameLayout windows;
-    private final Button toggle;
-    private final Context context;
-    private final String script;
-    private final Runnable poll = this::refresh;
-    private WebView source;
-    private ScrollView list;
-    private String lastSnapshot;
-    private boolean paused;
-    private boolean officialView;
-    private boolean manualAttempt;
-    private boolean explicitList;
-    private long revision;
-    private int retries;
-
-    OfficialKeyDirectory(FrameLayout windows, Button toggle) {
-        this.windows = windows;
-        this.toggle = toggle;
-        context = windows.getContext();
-        script = LocalSite.bundledScript(context, R.raw.platform_keys);
-        toggle.setOnClickListener(v -> {
-            if (list != null) {
-                revealSource();
-            } else {
-                officialView = false;
-                manualAttempt = true;
-                explicitList = true;
-                retries = 0;
-                refresh();
-            }
-        });
+    interface Host {
+        void nativeChrome(boolean visible);
+        void reloadDirectory();
+        void leaveDirectory();
     }
 
-    void document(WebView view) {
-        if (view == source) return;
-        windows.removeCallbacks(poll);
-        revision++;
-        clearList();
-        source = view;
-        officialView = false;
-        manualAttempt = false;
-        explicitList = false;
-        retries = 0;
-        toggle.setVisibility(view != null && !script.isEmpty() ? View.VISIBLE : View.GONE);
-        if (view != null) refresh();
+    private enum Route { OTHER, KEYS, SIGN_IN, LOGIN_RETURN }
+    private enum Screen { CLOSED, LOADING, LIST, UNAVAILABLE, SIGN_IN, ACTION, WEBSITE }
+
+    private static final String KEY_PAGE = "window === window.top && location.origin === 'https://platform.deepseek.com'"
+            + " && location.pathname === '/api_keys'";
+    private final FrameLayout layer;
+    private final Button returnButton;
+    private final OfficialKeyPanel panel;
+    private final OfficialKeyForm form;
+    private final Host host;
+    private final String adapter;
+    private final Runnable poll = this::refresh;
+    private final Runnable deadline = () -> timedOut();
+    private Route route = Route.OTHER;
+    private Screen screen = Screen.CLOSED;
+    private WebView source;
+    private boolean ready;
+    private boolean paused;
+    private boolean signInApproved;
+    private long generation;
+    private String lastSnapshot;
+    private JSONArray rows;
+
+    OfficialKeyDirectory(Context context, FrameLayout layer, Button returnButton, Host host) {
+        this.layer = layer;
+        this.returnButton = returnButton;
+        this.host = host;
+        adapter = LocalSite.bundledScript(context, R.raw.platform_keys);
+        form = new OfficialKeyForm(context);
+        panel = new OfficialKeyPanel(context, this::action);
+        layer.addView(panel, new FrameLayout.LayoutParams(-1, -1));
+        layer.setClickable(true);
+        layer.setVisibility(View.GONE);
+        returnButton.setText(R.string.key_return_directory);
+        returnButton.setOnClickListener(v -> resumeDirectory());
+    }
+
+    private void cancelWork() {
+        generation++;
+        layer.removeCallbacks(poll);
+        layer.removeCallbacks(deadline);
+        form.cancel();
+    }
+
+    private void forgetRows() {
+        rows = null;
+        lastSnapshot = null;
+    }
+
+    boolean nativeVisible() {
+        return screen != Screen.CLOSED && screen != Screen.WEBSITE;
+    }
+
+    private void show(Screen next) {
+        if (next == screen) return;
+        screen = next;
+        layer.setVisibility(nativeVisible() ? View.VISIBLE : View.GONE);
+        returnButton.setVisibility(next == Screen.WEBSITE && route == Route.KEYS ? View.VISIBLE : View.GONE);
+        host.nativeChrome(nativeVisible());
+        switch (next) {
+            case LOADING: panel.loading(); break;
+            case SIGN_IN: panel.showSignInNeeded(); break;
+            case UNAVAILABLE: panel.unavailable(); break;
+            case ACTION: panel.awaitingConfirmation(); break;
+            default: break;
+        }
+    }
+
+    /** Called both before the first load and after a visible top-level document is verified. */
+    void route(WebView view, String url, boolean root, boolean readyNow, boolean failed, boolean keyTask) {
+        String path = PlatformNavigation.platformPath(url);
+        Route next = Route.OTHER;
+        if (root && PlatformNavigation.isKeyPage(url)) next = Route.KEYS;
+        else if (root && keyTask) {
+            if (PlatformNavigation.LOGIN.equals(path) || "/sign_up".equals(path)) next = Route.SIGN_IN;
+            else if ("/".equals(path) && (route == Route.SIGN_IN || route == Route.LOGIN_RETURN)) next = Route.LOGIN_RETURN;
+            else if (url == null) next = route;
+        }
+
+        if (next != route || source != view || (ready && !readyNow)) {
+            boolean keepWebsite = next == route && source == view && screen == Screen.WEBSITE;
+            cancelWork();
+            forgetRows();
+            source = view;
+            route = next;
+            ready = false;
+            if (next == Route.KEYS) signInApproved = false;
+            if (!keepWebsite) {
+                if (next == Route.OTHER) show(Screen.CLOSED);
+                else if (next == Route.SIGN_IN) show(signInApproved ? Screen.WEBSITE : Screen.SIGN_IN);
+                else show(Screen.LOADING);
+                if (screen == Screen.LOADING) startDeadline();
+            }
+        }
+        if (next == Route.OTHER || next == Route.SIGN_IN) return;
+        if (failed) {
+            cancelWork();
+            forgetRows();
+            ready = false;
+            if (screen != Screen.WEBSITE) show(Screen.UNAVAILABLE);
+            return;
+        }
+        if (next != Route.KEYS || !readyNow || ready) return;
+        ready = true;
+        if (screen != Screen.WEBSITE && !paused) refresh();
+    }
+
+    private void startDeadline() {
+        layer.removeCallbacks(deadline);
+        if (!paused) layer.postDelayed(deadline, 9000);
+    }
+
+    private void timedOut() {
+        if (screen == Screen.LOADING) {
+            layer.removeCallbacks(poll);
+            show(Screen.UNAVAILABLE);
+        }
     }
 
     void setPaused(boolean value) {
+        if (paused == value) return;
         paused = value;
-        windows.removeCallbacks(poll);
-        revision++;
-        if (!paused && source != null && !officialView) refresh();
+        cancelWork();
+        // An outstanding website action can have completed while the activity was backgrounded.
+        // Never click it again or reload a one-time issuance result.
+        if (!paused && (screen == Screen.LOADING || screen == Screen.LIST)) {
+            if (screen == Screen.LOADING) startDeadline();
+            if (ready) refresh();
+        }
     }
 
-    private boolean current(WebView view, long generation) {
-        return !paused && revision == generation && source == view && PlatformNavigation.isKeyPage(view.getUrl());
+    private boolean current(WebView view, long token) {
+        return !paused && token == generation && view == source && ready && route == Route.KEYS
+                && PlatformNavigation.isKeyPage(view.getUrl());
     }
 
     private void refresh() {
         WebView view = source;
-        if (view == null || paused || officialView || script.isEmpty() || !PlatformNavigation.isKeyPage(view.getUrl())) return;
-        windows.removeCallbacks(poll);
-        long generation = ++revision;
+        if (view == null || !ready || paused || route != Route.KEYS || screen == Screen.WEBSITE
+                || screen == Screen.ACTION || !PlatformNavigation.isKeyPage(view.getUrl())) return;
+        layer.removeCallbacks(poll);
+        long token = ++generation;
         String expression = "(() => { if (!(" + KEY_PAGE + ")) return null; if (!window.__tokenSeekKeyDirectoryV1) {"
-                + script + "\n} return window.__tokenSeekKeyDirectoryV1?.snapshot(" + explicitList + ") ?? null; })()";
+                + adapter + "\n} return window.__tokenSeekKeyDirectoryV1?.snapshot(true) ?? null; })()";
         view.evaluateJavascript(expression, raw -> {
-            if (!current(view, generation)) return;
+            if (!current(view, token)) return;
             try {
-                if (raw == null || raw.length() > 250000) throw new JSONException("size");
+                if (raw == null || raw.length() > 250000) throw new JSONException("Invalid directory size");
                 if (!raw.equals(lastSnapshot)) {
-                    render(new JSONObject(raw));
+                    JSONObject snapshot = new JSONObject(raw);
+                    JSONArray entries = snapshot.getJSONArray("rows");
+                    panel.render(snapshot);
+                    rows = entries;
                     lastSnapshot = raw;
                 }
-                retries = 0;
-                manualAttempt = false;
-                windows.postDelayed(poll, 2500);
-            } catch (JSONException unrecognized) {
-                clearList();
-                explicitList = false;
-                if (manualAttempt) {
-                    manualAttempt = false;
-                    Toast.makeText(context, R.string.key_view_unavailable, Toast.LENGTH_SHORT).show();
+                show(Screen.LIST);
+                layer.removeCallbacks(deadline);
+                layer.postDelayed(poll, 8000);
+            } catch (JSONException unknownLayout) {
+                forgetRows();
+                if (screen == Screen.LIST) {
+                    show(Screen.LOADING);
+                    startDeadline();
                 }
-                // An SPA may render its table after the document has finished. During that time
-                // keep the underlying site usable, then let the user retry via the toolbar.
-                if (++retries <= 8) windows.postDelayed(poll, 900);
+                if (screen == Screen.LOADING) layer.postDelayed(poll, 600);
             }
         });
     }
 
-    private void revealSource() {
-        officialView = true;
-        explicitList = false;
-        windows.removeCallbacks(poll);
-        revision++;
-        clearList();
-        if (source != null) source.requestFocus();
+    private void resumeDirectory() {
+        if (route != Route.KEYS) return;
+        cancelWork();
+        forgetRows();
+        show(Screen.LOADING);
+        startDeadline();
+        if (ready) refresh();
     }
 
-    private void act(String command) {
+    private void action(String command) {
+        if ("back".equals(command)) { if (!back()) host.leaveDirectory(); return; }
+        if ("official".equals(command)) {
+            cancelWork();
+            forgetRows();
+            if (route == Route.SIGN_IN) signInApproved = true;
+            show(Screen.WEBSITE);
+            if (source != null) source.requestFocus();
+            return;
+        }
+        if ("retry".equals(command)) {
+            cancelWork();
+            forgetRows();
+            ready = false;
+            show(Screen.LOADING);
+            startDeadline();
+            host.reloadDirectory();
+            return;
+        }
+        if (screen != Screen.LIST || source == null || paused || !ready) return;
+        int separator = command.indexOf(':');
+        String operation = separator < 0 ? command : command.substring(0, separator);
+        JSONObject selected = null;
+        if (separator >= 0) {
+            String id = command.substring(separator + 1);
+            if (!(operation.equals("rename") || operation.equals("revoke") || operation.equals("show"))) return;
+            for (int i = 0; rows != null && i < rows.length(); i++) {
+                JSONObject entry = rows.optJSONObject(i);
+                if (entry != null && id.equals(entry.optString("id"))) { selected = entry; break; }
+            }
+            if (selected == null) return;
+        } else if (!(operation.equals("create") || operation.equals("usage") || operation.equals("next")
+                || operation.equals("previous"))) return;
+
+        String name = selected == null ? "" : selected.optString("name");
+        String identifier = selected == null ? "" : selected.optString("trackingId");
+        String identity = identifier.isEmpty() && selected != null ? selected.optString("masked") : identifier;
+        cancelWork();
         WebView view = source;
-        if (view == null || list == null || !PlatformNavigation.isKeyPage(view.getUrl())) return;
-        boolean paging = command.equals("next") || command.equals("previous");
-        boolean wasExplicit = explicitList;
-        revealSource();
-        long generation = revision;
-        view.evaluateJavascript("(" + KEY_PAGE + ") && window.__tokenSeekKeyDirectoryV1?.act("
-                + JSONObject.quote(command) + "," + wasExplicit + ") === true", result -> {
-            if (!current(view, generation)) return;
-            if (!"true".equals(result)) {
-                Toast.makeText(context, R.string.key_view_unavailable, Toast.LENGTH_SHORT).show();
-            } else if (paging) {
-                officialView = false;
-                explicitList = wasExplicit;
-                retries = 0;
-                windows.postDelayed(poll, 250);
+        long token = generation;
+        show(Screen.ACTION);
+        String expression = "(" + KEY_PAGE + ") && window.__tokenSeekKeyDirectoryV1?.dispatch("
+                + JSONObject.quote(command) + ",true)";
+        view.evaluateJavascript(expression, result -> {
+            if (!current(view, token)) return;
+            switch (result == null ? "" : result) {
+                case "\"form\"":
+                    form.begin(view, operation, name, identity, () -> current(view, token), website -> {
+                        if (!current(view, token)) return;
+                        if (website) action("official");
+                        else action("retry");
+                    });
+                    break;
+                case "\"source\"": action("official"); break;
+                default: resumeDirectory(); break; // Page advanced, or a row changed before the tap.
             }
         });
     }
 
-    private void clearList() {
-        if (list != null) {
-            windows.removeView(list);
-            list = null;
+    /** Consume only a local subpage. The native directory's own Back leaves the platform task. */
+    boolean back() {
+        if (nativeVisible() && panel.handleBack()) return true;
+        if (screen == Screen.WEBSITE && route == Route.KEYS) {
+            resumeDirectory();
+            return true;
         }
-        if (source != null) source.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_AUTO);
-        lastSnapshot = null;
-        toggle.setText(R.string.key_view_native);
+        return false;
     }
 
-    private void render(JSONObject data) throws JSONException {
-        JSONArray rows = data.getJSONArray("rows");
-        if (rows.length() > 500) throw new JSONException("oversized list");
-        LinearLayout column = new LinearLayout(context);
-        column.setOrientation(LinearLayout.VERTICAL);
-        column.setPadding(dp(16), dp(12), dp(16), dp(24));
-        if (data.getBoolean("create")) column.addView(action(R.string.key_view_create, "create"), -1, -2);
-        TextView count = text(context.getString(R.string.key_view_count, rows.length()), 14, R.color.platform_muted);
-        count.setPadding(0, dp(14), 0, dp(6));
-        if (Build.VERSION.SDK_INT >= 28) count.setAccessibilityHeading(true);
-        column.addView(count);
-        for (int i = 0; i < rows.length(); i++) {
-            JSONObject row = rows.getJSONObject(i);
-            String id = row.getString("id");
-            if (!id.matches("[a-z0-9-]{1,40}")) throw new JSONException("row");
-            String name = row.getString("name");
-            String masked = row.getString("masked");
-            String created = row.optString("created");
-            String lastUsed = row.optString("lastUsed");
-            if (name.length() > 256 || masked.length() > 128 || created.length() > 80 || lastUsed.length() > 80
-                    || !MASKED.matcher(masked).matches()
-                    || (name + " " + masked + " " + created + " " + lastUsed).matches("(?si).*sk-[a-z0-9_-]{16,}.*")) {
-                throw new JSONException("unrecognized display fields");
-            }
-            LinearLayout item = new LinearLayout(context);
-            item.setOrientation(LinearLayout.VERTICAL);
-            item.setPadding(dp(12), dp(12), dp(12), dp(12));
-            TypedArray style = context.obtainStyledAttributes(new int[]{android.R.attr.selectableItemBackground});
-            item.setBackgroundResource(style.getResourceId(0, 0));
-            style.recycle();
-            item.setFocusable(true);
-            item.setOnClickListener(v -> act("show:" + id));
-            TextView title = text(name, 17, R.color.platform_ink);
-            title.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
-            item.addView(title);
-            TextView key = text(masked, 15, R.color.platform_ink);
-            key.setTypeface(Typeface.MONOSPACE);
-            item.addView(key);
-            if (!created.isEmpty()) item.addView(text(context.getString(R.string.key_view_created, created), 13, R.color.platform_muted));
-            if (!lastUsed.isEmpty()) item.addView(text(context.getString(R.string.key_view_last_used, lastUsed), 13, R.color.platform_muted));
-            column.addView(item, -1, -2);
-            View divider = new View(context);
-            divider.setBackgroundColor(context.getColor(R.color.platform_hint_background));
-            column.addView(divider, -1, dp(1));
-        }
-        LinearLayout pagination = new LinearLayout(context);
-        pagination.setGravity(Gravity.END);
-        if (data.getBoolean("previous")) pagination.addView(action(R.string.key_view_previous, "previous"));
-        if (data.getBoolean("next")) pagination.addView(action(R.string.key_view_next, "next"));
-        if (pagination.getChildCount() > 0) column.addView(pagination, -1, -2);
-        if (rows.length() > 0) column.addView(text(context.getString(R.string.key_view_actions), 13, R.color.platform_muted));
-
-        int position = list == null ? 0 : list.getScrollY();
-        if (list == null) {
-            list = new ScrollView(context);
-            list.setFillViewport(true);
-            list.setClickable(true);
-            TypedArray colors = context.obtainStyledAttributes(new int[]{android.R.attr.colorBackground});
-            list.setBackgroundColor(colors.getColor(0, android.graphics.Color.WHITE));
-            colors.recycle();
-            windows.addView(list, new FrameLayout.LayoutParams(-1, -1));
-            source.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS);
-        } else {
-            list.removeAllViews();
-        }
-        list.addView(column);
-        ScrollView updated = list;
-        updated.post(() -> updated.scrollTo(0, position));
-        toggle.setText(R.string.key_view_original);
-    }
-
-    private int dp(int value) { return Math.round(value * context.getResources().getDisplayMetrics().density); }
-
-    private TextView text(String value, int size, int color) {
-        TextView view = new TextView(context);
-        view.setText(value);
-        view.setTextSize(size);
-        view.setTextColor(context.getColor(color));
-        return view;
-    }
-
-    private Button action(int label, String command) {
-        Button button = new Button(context, null, android.R.attr.borderlessButtonStyle);
-        button.setAllCaps(false);
-        button.setText(label);
-        button.setTextColor(context.getColor(R.color.platform_accent));
-        button.setMinHeight(dp(48));
-        button.setOnClickListener(v -> act(command));
-        return button;
+    void destroy() {
+        cancelWork();
+        forgetRows();
+        source = null;
     }
 }

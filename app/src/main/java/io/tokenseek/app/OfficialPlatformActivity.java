@@ -51,6 +51,8 @@ public final class OfficialPlatformActivity extends Activity {
     static final String EXTRA_BIND = "io.tokenseek.app.platform.BIND";
     static final String EXTRA_WORKSPACE = "io.tokenseek.app.platform.WORKSPACE";
     static final String EXTRA_AMOUNT = "io.tokenseek.app.platform.TOP_UP_AMOUNT";
+    static final String EXTRA_DARK = "io.tokenseek.app.platform.DARK";
+    static final String EXTRA_FONT = "io.tokenseek.app.platform.FONT";
     private static final String CONTINUATION_USED = "platform.continuationUsed";
     private static final String VIEWING_TRANSACTIONS = "platform.viewingTransactions";
     private static final String SHARED_SESSION_USED = "shared-session-used";
@@ -117,7 +119,16 @@ public final class OfficialPlatformActivity extends Activity {
         decor.setSystemUiVisibility(dark ? decor.getSystemUiVisibility() & ~lightBars
                 : decor.getSystemUiVisibility() | lightBars);
         pages = findViewById(R.id.platform_windows);
-        keyDirectory = new OfficialKeyDirectory(pages, findViewById(R.id.platform_key_view));
+        keyDirectory = new OfficialKeyDirectory(keyPanelContext(), findViewById(R.id.platform_key_host),
+                findViewById(R.id.platform_key_view), new OfficialKeyDirectory.Host() {
+                    @Override public void nativeChrome(boolean visible) { showNativeChrome(visible); }
+                    @Override public void reloadDirectory() {
+                        restartUrl = PlatformNavigation.BASE + PlatformNavigation.KEYS;
+                        navigation = new PlatformNavigation(restartUrl, false);
+                        openOfficialEntry(restartUrl);
+                    }
+                    @Override public void leaveDirectory() { back(); }
+                });
         mobileLayout = LocalSite.bundledScript(this, R.raw.platform_mobile);
         fillAmount = findViewById(R.id.platform_fill_amount);
         topUpAmount = PaymentHandoff.MERCHANT.equals(initial.toString())
@@ -207,7 +218,7 @@ public final class OfficialPlatformActivity extends Activity {
         view.setWebChromeClient(new SiteChrome());
         windows.add(view);
         pages.addView(view, new FrameLayout.LayoutParams(-1, -1));
-        view.requestFocus();
+        if (!keyDirectory.nativeVisible()) view.requestFocus();
         return view;
     }
 
@@ -271,7 +282,9 @@ public final class OfficialPlatformActivity extends Activity {
         WebView current = visibleWindow();
         boolean keyPage = PlatformNavigation.isKeyPage(url) && canBind(current);
         bind.setVisibility(keyPage ? View.VISIBLE : View.GONE);
-        keyDirectory.document(keyPage ? current : null);
+        boolean root = current == null || windows.indexOf(current) == 0;
+        boolean failed = current != null && ((SiteClient) current.getWebViewClient()).failed;
+        keyDirectory.route(current, url, root, keyPage, failed, "api_keys".equals(entryRoute));
         fillAmount.setVisibility(!topUpAmount.isEmpty() && PaymentHandoff.MERCHANT.equals(url)
                 && currentTopUp(current) ? View.VISIBLE : View.GONE);
     }
@@ -324,7 +337,41 @@ public final class OfficialPlatformActivity extends Activity {
 
     private void updateProgress(int value) {
         progress.setProgress(value);
-        progress.setVisibility(value >= 100 ? View.INVISIBLE : View.VISIBLE);
+        progress.setVisibility(keyDirectory.nativeVisible() ? View.GONE : value >= 100 ? View.INVISIBLE : View.VISIBLE);
+    }
+
+    private Context keyPanelContext() {
+        android.view.ContextThemeWrapper context = new android.view.ContextThemeWrapper(this, R.style.TokenSeekTheme);
+        Configuration override = new Configuration();
+        if (getIntent().hasExtra(EXTRA_DARK)) override.uiMode = getIntent().getBooleanExtra(EXTRA_DARK, false)
+                ? Configuration.UI_MODE_NIGHT_YES : Configuration.UI_MODE_NIGHT_NO;
+        int percent = getIntent().getIntExtra(EXTRA_FONT, 100);
+        override.fontScale = getResources().getConfiguration().fontScale * Math.max(90, Math.min(percent, 130)) / 100f;
+        context.applyOverrideConfiguration(override);
+        return context;
+    }
+
+    private void showNativeChrome(boolean nativeScreen) {
+        findViewById(R.id.platform_toolbar).setVisibility(nativeScreen ? View.GONE : View.VISIBLE);
+        pages.setImportantForAccessibility(nativeScreen ? View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS
+                : View.IMPORTANT_FOR_ACCESSIBILITY_AUTO);
+        pages.setDescendantFocusability(nativeScreen ? FrameLayout.FOCUS_BLOCK_DESCENDANTS : FrameLayout.FOCUS_AFTER_DESCENDANTS);
+        if (nativeScreen) {
+            hideNotice();
+            progress.setVisibility(View.GONE);
+            findViewById(R.id.platform_key_host).requestFocus();
+        } else {
+            WebView visible = visibleWindow();
+            updateProgress(visible == null ? 0 : visible.getProgress());
+        }
+        boolean dark = (getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK)
+                == Configuration.UI_MODE_NIGHT_YES;
+        if (nativeScreen) dark = getIntent().getBooleanExtra(EXTRA_DARK, dark);
+        getWindow().setStatusBarColor(dark ? 0xff17181c : 0xffffffff);
+        getWindow().setNavigationBarColor(dark ? 0xff17181c : 0xffffffff);
+        View decor = getWindow().getDecorView();
+        int lightBars = View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR | View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR;
+        decor.setSystemUiVisibility(dark ? decor.getSystemUiVisibility() & ~lightBars : decor.getSystemUiVisibility() | lightBars);
     }
 
     private void hideNotice() {
@@ -466,24 +513,24 @@ public final class OfficialPlatformActivity extends Activity {
             }
         }
 
-        private void markFailed(WebView view, int message) {
+        private void markFailed(WebView view, String address, int message) {
             failed = true;
             invalidate();
             if (view == visibleWindow()) {
                 bind.setVisibility(View.GONE);
-                keyDirectory.document(null);
                 fillAmount.setVisibility(View.GONE);
-                showFailure(message);
+                showPage(address);
+                if (!keyDirectory.nativeVisible()) showFailure(message);
             }
         }
 
         @Override public void onReceivedError(WebView view, WebResourceRequest request, WebResourceError error) {
-            if (request.isForMainFrame()) markFailed(view, R.string.platform_load_failed);
+            if (request.isForMainFrame()) markFailed(view, request.getUrl().toString(), R.string.platform_load_failed);
         }
 
         @Override public void onReceivedHttpError(WebView view, WebResourceRequest request, WebResourceResponse response) {
             if (!request.isForMainFrame()) return;
-            markFailed(view, R.string.platform_load_failed);
+            markFailed(view, request.getUrl().toString(), R.string.platform_load_failed);
             if (view != visibleWindow()) return;
             String address = request.getUrl().toString();
             if (PaymentHandoff.isWechatH5(address) || PaymentHandoff.isAlipayCashier(address)) {
@@ -495,7 +542,7 @@ public final class OfficialPlatformActivity extends Activity {
 
         @Override public void onReceivedSslError(WebView view, SslErrorHandler handler, SslError error) {
             handler.cancel();
-            if (error.getUrl().equals(view.getUrl())) markFailed(view, R.string.platform_ssl_failed);
+            if (error.getUrl().equals(view.getUrl())) markFailed(view, error.getUrl(), R.string.platform_ssl_failed);
         }
     }
 
@@ -640,8 +687,13 @@ public final class OfficialPlatformActivity extends Activity {
 
     private void back() {
         WebView current = visibleWindow();
-        if (keyboardVisible && current != null) {
+        if (keyboardVisible && current != null && !keyDirectory.nativeVisible()) {
             getSystemService(InputMethodManager.class).hideSoftInputFromWindow(current.getWindowToken(), 0);
+            return;
+        }
+        if (keyDirectory.back()) return;
+        if (keyDirectory.nativeVisible() && "api_keys".equals(entryRoute)) {
+            returnToChat(false);
             return;
         }
         if (current != null && windows.size() > 1) {
@@ -695,7 +747,7 @@ public final class OfficialPlatformActivity extends Activity {
     }
 
     @Override protected void onDestroy() {
-        if (keyDirectory != null) keyDirectory.document(null);
+        if (keyDirectory != null) keyDirectory.destroy();
         while (!windows.isEmpty()) removeWindow(visibleWindow());
         super.onDestroy();
     }

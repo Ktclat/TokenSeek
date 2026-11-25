@@ -1,0 +1,25 @@
+<resources>
+    <string name="key_panel_title">开放平台 API 密钥</string>
+    <string name="key_panel_usage">用量</string>
+    <string name="key_panel_create">新建 API 密钥</string>
+    <string name="key_panel_empty">还没有 API 密钥</string>
+    <string name="key_panel_more">更多</string>
+    <string name="key_panel_manage">管理「%1$s」</string>
+    <string name="key_panel_tracking">Tracking ID　%1$s</string>
+    <string name="key_panel_rename">重命名</string>
+    <string name="key_panel_revoke">删除</string>
+    <string name="key_panel_show">在官网查看</string>
+    <string name="key_panel_revoke_title">删除这把密钥？</string>
+    <string name="key_panel_revoke_message">下一步可核对并确认是否删除「%1$s」。</string>
+    <string name="key_panel_confirm">继续确认</string>
+    <string name="key_panel_retry">重试</string>
+    <string name="key_panel_loading">正在读取官方密钥…</string>
+    <string name="key_panel_unavailable">暂时无法读取官方密钥</string>
+    <string name="key_panel_unavailable_detail">可重试，或在 DeepSeek 官方页面查看。</string>
+    <string name="key_panel_login_title">登录后查看 API 密钥</string>
+    <string name="key_panel_login_detail">使用存有这些密钥的 DeepSeek 开放平台账户登录。</string>
+    <string name="key_panel_login">登录 DeepSeek</string>
+    <string name="key_panel_pending_title">等待官方确认</string>
+    <string name="key_panel_pending_detail">正在准备下一步操作。</string>
+    <string name="key_panel_official">打开官方页面</string>
+</resources>

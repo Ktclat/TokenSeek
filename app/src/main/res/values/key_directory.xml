@@ -1,12 +1,8 @@
 <resources>
-    <string name="key_view_native">查看原生密钥列表</string>
-    <string name="key_view_original">查看平台原页</string>
-    <string name="key_view_create">创建 API 密钥</string>
+    <string name="key_return_directory">返回密钥管理</string>
     <string name="key_view_count">当前页 · %1$d 把官方密钥</string>
     <string name="key_view_created">创建时间　%1$s</string>
     <string name="key_view_last_used">最近使用　%1$s</string>
-    <string name="key_view_actions">点一把密钥可在官方页面定位并管理它。</string>
     <string name="key_view_previous">上一页</string>
     <string name="key_view_next">下一页</string>
-    <string name="key_view_unavailable">当前页面可直接在下方操作。列表加载完成后可切换到原生视图。</string>
 </resources>

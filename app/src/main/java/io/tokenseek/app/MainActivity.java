@@ -193,6 +193,9 @@ public final class MainActivity extends Activity {
                 else if ("home".equals(fromPage)) platformParentHash = "#return-official-home";
                 else platformParentHash = null;
                 Intent task = OfficialPlatformActivity.createIntent(this, uri.toString(), platformOwner);
+                if (pageDark != null) task.putExtra(OfficialPlatformActivity.EXTRA_DARK, pageDark);
+                task.putExtra(OfficialPlatformActivity.EXTRA_FONT,
+                        Math.round(web.getSettings().getTextZoom() * 100f / Math.max(systemTextZoom, 1)));
                 if (amount != null && PaymentHandoff.MERCHANT.equals(uri.toString()))
                     task.putExtra(OfficialPlatformActivity.EXTRA_AMOUNT, amount);
                 startActivityForResult(task, OPEN_PLATFORM);

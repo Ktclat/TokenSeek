@@ -5,13 +5,15 @@ TokenSeek 是一个独立的 DeepSeek 安卓客户端。聊天界面基于官方
 ## 登录、充值和密钥
 
 1. 在聊天侧栏右下角点齿轮即可打开设置。点左下角头像可直接进入「DeepSeek 账户」，在「登录 DeepSeek」中完成官方账户验证。官方窗口顶部显示当前域名。[开放平台登录](https://platform.deepseek.com/sign_in)
-2. 「设置 → 开放平台 API 密钥」进入当前登录的 DeepSeek 账户，可管理该账户在其他设备或应用创建的密钥。Android 能识别官方页面已呈现的密钥表时，会用原生列表显示本页名称、掩码及官网提供的日期；官网有可识别的翻页控件时可切换页。点某一行可在原页定位并管理，点创建可进入官方创建流程。如果还需登录、正在操作表单或页面结构暂时无法识别，应用会显示完整官方页面。[官方密钥管理](https://platform.deepseek.com/api_keys)
+2. 在「设置 → 开放平台 API 密钥」或「聊天使用的密钥 → 创建或管理官方密钥」查看当前官方账户的密钥，包括在其他设备上创建的密钥。Android 原生列表逐行显示名称和官网提供的 Tracking ID 或密钥掩码。点「新建 API 密钥」可以创建，点某行的「更多」可以重命名或删除。官网提供分页时可翻页。加载中、需要登录或读取失败时都在应用内显示相应状态。[官方密钥管理](https://platform.deepseek.com/api_keys)
 3. 在「DeepSeek 账户 → 余额与充值」查看余额，选择 ¥10、¥50、¥100 或输入自定义人民币金额。进入官方收银台后点「填入」可将金额写入可识别的人民币充值输入框，核对账号、官网金额和支付方式后再付款。遇到其他表单时，可复制金额或按官网提供的选项填写。支持的金额和支付方式以官网为准。[官方充值页](https://platform.deepseek.com/top_up)
 4. 支付宝唤起时保留官方链接中的订单参数。手机无法接管链接时，可以在原收银台继续；如需浏览器，也可以从官方充值入口重新开始并核对浏览器账号。返回应用后可查看官方账单，在账户页刷新余额。[官方账单](https://platform.deepseek.com/transactions)
 
 「聊天使用的密钥」管理这台设备保存的 Key，可命名、切换或移除。要使用新建的官方密钥，在官方创建页复制后点「用于聊天」，粘贴并验证，之后聊天和余额查询都会使用它。手机通过 Android Keystore 加密保存选用的密钥。要撤销某把密钥在所有设备上的访问权，请在「开放平台 API 密钥」中操作。[首次调用 API](https://api-docs.deepseek.com/zh-cn/)
 
-官方余额接口可分币种查询总余额、充值余额和赠金。DeepSeek 的公开 API 文档未列出供独立客户端使用的账户级密钥管理与充值建单接口。账户授权、官方新密钥签发、撤销确认及支付由官方页面处理。原生列表按当前呈现的脱敏信息显示，旧密钥明文不会从平台同步到设备。[官方 API 文档](https://api-docs.deepseek.com/zh-cn/api/deepseek-api/) · [官方余额接口](https://api-docs.deepseek.com/zh-cn/api/get-user-balance/)
+Tracking ID 用于识别平台上的某把密钥。聊天鉴权需要完整的 API Key，完整值仅在创建时由 DeepSeek 展示一次。Android 列表和表单使用当前账户的官方登录会话。遇到登录验证、查看官方用量、领取新密钥或无法识别的操作表单时，应用会显示官方页面及其域名。读取列表失败时，可以在原生页重试或手动打开官网。
+
+官方余额接口可分币种查询总余额、充值余额和赠金。DeepSeek 的公开 API 文档提供余额查询。账户级密钥管理和充值下单仍通过官方开放平台会话完成。[官方 API 文档](https://api-docs.deepseek.com/zh-cn/api/deepseek-api/) · [官方余额接口](https://api-docs.deepseek.com/zh-cn/api/get-user-balance/)
 
 ## 侧栏、账户和项目
 
@@ -26,7 +28,7 @@ TokenSeek 是一个独立的 DeepSeek 安卓客户端。聊天界面基于官方
 
 输入框内的圆环表示当前分支预计剩余的上下文。点圆环可查看剩余空间、草稿估算，以及整个会话和每次回答的实际用量；重新生成的其他分支也算入会话累计。实际用量采用 API 返回的 token 记录。附件内容等无法可靠估算时，圆环显示「—」，详情会说明原因。[官方模型列表](https://api-docs.deepseek.com/zh-cn/api/list-models/) · [用量字段](https://api-docs.deepseek.com/zh-cn/api/create-message/)
 
-设置首页、DeepSeek 账户、余额与充值、外观、字体大小和个性化使用 Android 原生控件。可以切换跟随系统、浅色或深色，调整四档字号，以及为每个账户设置回答风格与默认回答语言。聊天正文和本机管理页面由 APK 内置界面渲染。开放平台的身份验证、收款和官方密钥签发由应用内官方页面完成。窄屏会为官网的过宽表格和过高对话框提供滚动，方便核对整行数据和触达表单底部按钮。
+设置首页、DeepSeek 账户、官方密钥目录、余额与充值、外观、字体大小和个性化使用 Android 原生控件。可以切换跟随系统、浅色或深色，调整四档字号，以及为每个账户设置回答风格与默认回答语言。聊天正文和本机管理页面由 APK 内置界面渲染。开放平台的身份验证、收款和官方密钥签发由应用内官方页面完成。窄屏会为官网的过宽表格和过高对话框提供滚动，方便核对整行数据和触达表单底部按钮。
 
 ## 对话导入与导出
 
@@ -36,7 +38,7 @@ TokenSeek 是一个独立的 DeepSeek 安卓客户端。聊天界面基于官方
 
 ## 待办
 
-通过 DeepSeek 网页端账户直接聊天、无需开放平台 API Key 的模式已列入待办。0.7.0 的聊天仍使用开放平台 API。
+通过 DeepSeek 网页端账户直接聊天、无需开放平台 API Key 的模式已列入待办。0.8.0 的聊天仍使用开放平台 API。
 
 ## 构建安卓版
 
@@ -53,4 +55,5 @@ TokenSeek 是一个独立的 DeepSeek 安卓客户端。聊天界面基于官方
 | 聊天页、侧栏、模型与用量 | `web/overlay/src/components/chatInput/`、`web/overlay/src/components/sider/`、`web/overlay/src/services/chat/` |
 | 本机账户、钱包与密钥 | `web/overlay/src/components/settings/`、`web/overlay/src/services/profiles.ts`、`app/src/main/java/io/tokenseek/app/KeyVault.java` |
 | Android 原生设置、官方页面和支付 | `app/src/main/java/io/tokenseek/app/NativeSettings.java`、`app/src/main/java/io/tokenseek/app/OfficialPlatformActivity.java`、`app/src/main/java/io/tokenseek/app/PaymentHandoff.java` |
+| Android 原生官方密钥管理 | `OfficialKeyDirectory.java`、`OfficialKeyPanel.java`、`OfficialKeyForm.java`、`app/src/main/res/raw/platform_keys.js`、`app/src/main/res/raw/platform_key_form.js` |
 | 官方 Demo 版本、差异及打包 | `tools/build-web.sh`、`web/patches/` |

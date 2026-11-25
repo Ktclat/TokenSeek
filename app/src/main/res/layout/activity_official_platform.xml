@@ -1,7 +1,7 @@
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/platform_root" android:layout_width="match_parent" android:layout_height="match_parent"
     android:orientation="vertical">
-    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
+    <LinearLayout android:id="@+id/platform_toolbar" android:layout_width="match_parent" android:layout_height="wrap_content"
         android:minHeight="48dp" android:gravity="center_vertical" android:orientation="horizontal">
         <ImageButton android:id="@+id/platform_back" android:layout_width="48dp" android:layout_height="48dp"
             android:background="?android:attr/selectableItemBackgroundBorderless" android:src="@drawable/platform_back"
@@ -49,6 +49,10 @@
     <Button android:id="@+id/platform_key_view" style="@style/PlatformAction"
         android:layout_width="wrap_content" android:layout_height="wrap_content"
         android:layout_gravity="end" android:layout_marginEnd="8dp" android:visibility="gone" />
-    <FrameLayout android:id="@+id/platform_windows" android:layout_width="match_parent"
-        android:layout_height="0dp" android:layout_weight="1" />
+    <FrameLayout android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1">
+        <FrameLayout android:id="@+id/platform_windows" android:layout_width="match_parent"
+            android:layout_height="match_parent" />
+        <FrameLayout android:id="@+id/platform_key_host" android:layout_width="match_parent"
+            android:layout_height="match_parent" android:visibility="gone" android:focusableInTouchMode="true" />
+    </FrameLayout>
 </LinearLayout>

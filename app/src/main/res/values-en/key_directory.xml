@@ -1,12 +1,8 @@
 <resources>
-    <string name="key_view_native">Show native key list</string>
-    <string name="key_view_original">Show platform page</string>
-    <string name="key_view_create">Create an API key</string>
+    <string name="key_return_directory">Return to key management</string>
     <string name="key_view_count">Official keys on this page · %1$d</string>
     <string name="key_view_created">Created　%1$s</string>
     <string name="key_view_last_used">Last used　%1$s</string>
-    <string name="key_view_actions">Tap a key to find and manage it on the platform.</string>
     <string name="key_view_previous">Previous page</string>
     <string name="key_view_next">Next page</string>
-    <string name="key_view_unavailable">You can use the page below. Switch to the native view once the list has loaded.</string>
 </resources>
