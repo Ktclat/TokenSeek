@@ -16,6 +16,7 @@ import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.*;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 import java.util.zip.CRC32;
 import java.util.zip.CheckedInputStream;
 import java.util.zip.ZipEntry;
@@ -37,6 +38,10 @@ final class NativePlatformUsageReport {
             Pattern.compile("amount(?:-[a-z0-9_-]+)?\\.csv", Pattern.CASE_INSENSITIVE);
     private static final Pattern COST_FILE =
             Pattern.compile("cost(?:-[a-z0-9_-]+)?\\.csv", Pattern.CASE_INSENSITIVE);
+    // Android's currency factory also accepts unassigned three-letter codes.
+    private static final Set<String> CURRENCY_CODES = Currency.getAvailableCurrencies().stream()
+            .map(Currency::getCurrencyCode)
+            .collect(Collectors.toSet());
 
     private NativePlatformUsageReport() {}
 
@@ -360,15 +365,9 @@ final class NativePlatformUsageReport {
 
         void cost(Row row, Instant start) throws IOException {
             String currency = row.get("currency"), raw = row.get("cost");
-            try {
-                Currency.getInstance(currency);
-            } catch (IllegalArgumentException unknown) {
-                skippedRows++;
-                return;
-            }
             String wallet = row.get("wallet_type");
             if (!wallet.isEmpty() && !wallet.equals("Paid") && !wallet.equals("Granted")
-                    || !currency.matches("[A-Z]{3}")
+                    || !CURRENCY_CODES.contains(currency)
                     || "XXX".equals(currency)
                     || "XTS".equals(currency)
                     || !row.supportedUnit("unit", currency.toLowerCase(Locale.ROOT))
