@@ -1,0 +1,283 @@
+diff --git a/src/components/settings/settingsDialogState.ts b/src/components/settings/settingsDialogState.ts
+index e9738da..a33962d 100644
+--- a/src/components/settings/settingsDialogState.ts
++++ b/src/components/settings/settingsDialogState.ts
+@@ -3,7 +3,7 @@ import { useSettings } from '../../services/settings.js'
+ 
+ export type SettingsSection =
+   | 'home' | 'account' | 'wallet' | 'keys' | 'general' | 'data'
+-  | 'theme' | 'language' | 'voice' | 'location' | 'cities'
++  | 'theme' | 'language' | 'voice' | 'location' | 'cities' | 'profiles'
+ 
+ type SettingsNavigation = { stack: SettingsSection[]; focusNewKey: boolean }
+ 
+diff --git a/src/env.d.ts b/src/env.d.ts
+index 140eb02..fbf60b8 100644
+--- a/src/env.d.ts
++++ b/src/env.d.ts
+@@ -9,7 +9,10 @@ declare module '*.css' {}
+ declare const __API_ORIGIN__: string
+ 
+ interface Window {
+-  TokenSeekSecrets?: { manageKeys(action: string, id: string, name: string, secret: string): string }
++  TokenSeekSecrets?: {
++    manageKeys(action: string, id: string, name: string, secret: string): string
++    manageProfileKeys?(profile: string, action: string, id: string, name: string, secret: string): string
++  }
+   TokenSeekFiles?: { saveBlob(blob: Blob, name: string): Promise<void> }
+ }
+ 
+diff --git a/src/services/chat/db.ts b/src/services/chat/db.ts
+index ca8ced0..b7288d4 100644
+--- a/src/services/chat/db.ts
++++ b/src/services/chat/db.ts
+@@ -1,8 +1,11 @@
+ import { openDB, type DBSchema, type IDBPDatabase } from 'idb'
++import { profileStorageName } from '../profiles.js'
++import type { DraftSnapshot } from './drafts.js'
++import type { ChatOrganization } from './organizationData.js'
+ import { toSessionSummary, type Session, type SessionSummary } from './types.js'
+ 
+ /** IndexedDB 存储结构版本；新增或调整存储、索引时递增。 */
+-const DB_VERSION = 11
++const DB_VERSION = 12
+ 
+ /** 文件原件按附件的本地 id 存储，所有引用同一 id 的消息共用一份；用于缩略图、打开查看，以及没有 serverId 时补传。 */
+ export type StoredFile = {
+@@ -13,7 +16,11 @@ export type StoredFile = {
+ /** 文件引用留在摘要中，删除会话时通过索引判断原件是否仍被引用。 */
+ type StoredSessionSummary = SessionSummary & { fileIds: string[] }
+ 
++type ResumeState = { activeId: string | null; drafts: DraftSnapshot }
++
+ interface ChatDB extends DBSchema {
++  resume: { key: string; value: ResumeState }
++  organization: { key: string; value: ChatOrganization }
+   /** 当前使用的会话，界面读写都在这里 */
+   sessions: { key: string; value: Session }
+   sessionSummaries: {
+@@ -54,7 +61,7 @@ const abortTransaction = (tx: { abort(): void }) => {
+ 
+ // 每个操作拿到连接后立即创建事务；IndexedDB 按创建顺序执行范围重叠的事务，读取总能看到之前发起的写入。
+ const getDB = () =>
+-  (dbPromise ??= openDB<ChatDB>('chat-demo', DB_VERSION, {
++  (dbPromise ??= openDB<ChatDB>(profileStorageName('chat-demo'), DB_VERSION, {
+     upgrade(db, _oldVersion, _newVersion, tx) {
+       // 初始化当前格式需要的存储与索引，不迁移旧消息。
+       for (const name of ['sessions', 'files', 'sessionsStaging', 'filesStaging'] as const) {
+@@ -62,6 +69,9 @@ const getDB = () =>
+           db.createObjectStore(name, { keyPath: 'id' })
+         }
+       }
++      for (const name of ['resume', 'organization'] as const) {
++        if (!db.objectStoreNames.contains(name)) db.createObjectStore(name)
++      }
+       const summaries = db.objectStoreNames.contains('sessionSummaries')
+         ? tx.objectStore('sessionSummaries')
+         : db.createObjectStore('sessionSummaries', { keyPath: 'id' })
+@@ -75,6 +85,15 @@ const getDB = () =>
+     throw error
+   }))
+ 
++export const loadResume = async () => (await getDB()).get('resume', 'current')
++
++export const saveResume = async (state: ResumeState, switching = false) => {
++  const db = await getDB()
++  // Before leaving this document, wait for earlier history and attachment transactions to finish.
++  const tx = db.transaction(switching ? db.objectStoreNames : ['resume'], 'readwrite')
++  await Promise.all([tx.objectStore('resume').put(state, 'current'), tx.done])
++}
++
+ export const loadSessionSummaries = async (): Promise<SessionSummary[]> =>
+   (await (await getDB()).getAll('sessionSummaries')).map(toSessionSummary)
+ 
+@@ -231,7 +250,7 @@ export const updateStagingFileTypes = async (
+ export const commitStaging = async (): Promise<SessionSummary[]> => {
+   const summaries: SessionSummary[] = []
+   const tx = (await getDB()).transaction(
+-    ['sessions', 'sessionSummaries', 'files', 'sessionsStaging', 'filesStaging'],
++    ['sessions', 'sessionSummaries', 'files', 'sessionsStaging', 'filesStaging', 'resume'],
+     'readwrite'
+   )
+   const move = async (from: 'sessionsStaging' | 'filesStaging', to: 'sessions' | 'files') => {
+@@ -260,7 +279,10 @@ export const commitStaging = async (): Promise<SessionSummary[]> => {
+       throw error
+     }
+   }
+-  await Promise.all([move('sessionsStaging', 'sessions'), move('filesStaging', 'files'), tx.done])
++  await Promise.all([
++    move('sessionsStaging', 'sessions'), move('filesStaging', 'files'),
++    tx.objectStore('resume').clear(), tx.done,
++  ])
+   // 直接返回本次提交的列表，调用方无需在替换成功后再发起可能失败的读取。
+   return summaries
+ }
+diff --git a/src/services/chat/drafts.ts b/src/services/chat/drafts.ts
+index 7fc1dba..6621b7b 100644
+--- a/src/services/chat/drafts.ts
++++ b/src/services/chat/drafts.ts
+@@ -6,6 +6,7 @@ import {
+   isImage,
+   resolveMimeType,
+   uploadAttachment,
++  useUploads,
+   validateFiles,
+   type UploadTask,
+ } from '../attachments.js'
+@@ -22,11 +23,43 @@ type Draft = { text: string; attachments: DraftAttachment[] }
+ 
+ export const EMPTY_DRAFT: Draft = { text: '', attachments: [] }
+ 
+-/** 草稿只保存在本次页面的内存中，独立于会话详情缓存；null 是新对话的草稿。 */
++/** 草稿属于当前档案，独立于会话详情缓存；null 是新对话的草稿。 */
+ export const useDrafts = create<{ drafts: Map<string | null, Draft> }>(() => ({
+   drafts: new Map(),
+ }))
+ 
++export type DraftSnapshot = {
++  drafts: Map<string | null, Draft>
++  uploads: Record<string, UploadTask>
++}
++
++export const snapshotDrafts = (): DraftSnapshot => {
++  const { drafts } = useDrafts.getState()
++  const { tasks } = useUploads.getState()
++  const uploads: Record<string, UploadTask> = {}
++  for (const draft of drafts.values()) {
++    for (const { id } of draft.attachments) {
++      const task = tasks[id]
++      // The network request cannot survive a reload. Keep the File so the user can retry.
++      uploads[id] = task && task.status !== 'uploading' ? task
++        : { status: 'error', retryable: true, error: { key: 'uploadFileStatusFailed' } }
++    }
++  }
++  return { drafts, uploads }
++}
++
++export const restoreDrafts = (snapshot: DraftSnapshot, sessionIds: Set<string>) => {
++  const drafts = new Map<string | null, Draft>()
++  const tasks: Record<string, UploadTask> = {}
++  for (const [id, draft] of snapshot.drafts) {
++    if (id !== null && !sessionIds.has(id)) continue
++    drafts.set(id, draft)
++    for (const file of draft.attachments) tasks[file.id] = snapshot.uploads[file.id]
++  }
++  useUploads.setState({ tasks })
++  useDrafts.setState({ drafts })
++}
++
+ export const getDraft = (sessionId: string | null): Draft =>
+   useDrafts.getState().drafts.get(sessionId) ?? EMPTY_DRAFT
+ 
+diff --git a/src/services/chat/store.ts b/src/services/chat/store.ts
+index f28e535..c34eeee 100644
+--- a/src/services/chat/store.ts
++++ b/src/services/chat/store.ts
+@@ -22,6 +22,9 @@ import {
+   clearSentDraft,
+   getDraft,
+   prepareDraftMessage,
++  restoreDrafts,
++  snapshotDrafts,
++  useDrafts,
+ } from './drafts.js'
+ import { createLatestReminder } from './latestReminder.js'
+ import {
+@@ -186,7 +189,7 @@ const updateReply = (sessionId: string, reply: AssistantMessage) =>
+     ),
+   }))
+ 
+-const persist = (sessionId: string) => {
++const persist = async (sessionId: string): Promise<void> => {
+   const session = getSession(sessionId)
+   if (session) {
+     unsavedSessions.add(sessionId)
+@@ -195,7 +198,7 @@ const persist = (sessionId: string) => {
+     }
+     const epoch = historyEpoch
+     const files = pendingFiles.get(sessionId)
+-    void db
++    return db
+       .saveSession(session, files)
+       .then(() => {
+         if (epoch !== historyEpoch || !getSession(sessionId)) {
+@@ -231,9 +234,35 @@ export const retrySaveSessions = () => {
+   }
+ }
+ 
++const saveResume = (switching = false) =>
++  db.saveResume({ activeId: get().activeId, drafts: snapshotDrafts() }, switching)
++
+ /** 离开前先合并尚未绘制的增量；隐藏期间浏览器可能暂停动画帧。 */
+ export const bindChatPersistence = () => {
++  let timer: ReturnType<typeof setTimeout> | undefined
++  let dirty = false
++  const saveLocationAndDrafts = () => {
++    clearTimeout(timer)
++    if (!dirty || !get().ready || get().importingHistory) return
++    dirty = false
++    void saveResume().catch((error: unknown) => {
++      dirty = true
++      db.reportStorageError('save chat drafts')(error)
++    })
++  }
++  const schedule = () => {
++    if (!get().ready || get().importingHistory) return
++    dirty = true
++    clearTimeout(timer)
++    timer = setTimeout(saveLocationAndDrafts, 600)
++  }
++  const unsubscribeChat = useChatStore.subscribe((state, previous) => {
++    if (state.activeId !== previous.activeId) schedule()
++  })
++  const unsubscribeDrafts = useDrafts.subscribe(schedule)
++  const unsubscribeUploads = useUploads.subscribe(schedule)
+   const save = () => {
++    saveLocationAndDrafts()
+     if (get().importingHistory) {
+       return
+     }
+@@ -255,6 +284,10 @@ export const bindChatPersistence = () => {
+   document.addEventListener('visibilitychange', onVisibilityChange)
+   window.addEventListener('pagehide', save)
+   return () => {
++    unsubscribeChat()
++    unsubscribeDrafts()
++    unsubscribeUploads()
++    saveLocationAndDrafts()
+     document.removeEventListener('visibilitychange', onVisibilityChange)
+     window.removeEventListener('pagehide', save)
+   }
+@@ -307,9 +340,13 @@ export const initChat = (): Promise<void> => {
+   set({ initError: false })
+   initTask = (async () => {
+     try {
+-      const summaries = await db.loadSessionSummaries()
++      const [summaries, resume] = await Promise.all([db.loadSessionSummaries(), db.loadResume()])
+       if (epoch === historyEpoch) {
+-        set({ ready: true, sessions: sortSessions(summaries) })
++        const ids = new Set(summaries.map(session => session.id))
++        if (resume) restoreDrafts(resume.drafts, ids)
++        const activeId = resume?.activeId && ids.has(resume.activeId) ? resume.activeId : null
++        set({ ready: true, sessions: sortSessions(summaries), activeId })
++        if (activeId) await ensureSessionLoaded(activeId)
+       }
+     } catch (error) {
+       if (epoch === historyEpoch) {
+@@ -1163,3 +1200,16 @@ const streamReply = async (sessionId: string, initial: AssistantMessage, request
+     persist(sessionId)
+   }
+ }
++
++
++/** The profile ID stays fixed for the lifetime of this document. Save its last state before reload. */
++export const prepareProfileSwitch = async (): Promise<void> => {
++  if (get().importingHistory) throw new Error('History update is in progress')
++  await initChat()
++  if (!get().ready) throw new Error('Unable to load local chats')
++  for (const controller of Object.values(get().streaming)) controller.abort()
++  await Promise.all([waitForIdle(), ...deletionTasks])
++  await Promise.all([...unsavedSessions].map(persist))
++  if (unsavedSessions.size) throw new Error('Unable to save local chats')
++  await saveResume(true)
++}

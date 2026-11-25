@@ -1,0 +1,750 @@
+diff --git a/src/components/settings/SettingsDialog.tsx b/src/components/settings/SettingsDialog.tsx
+index 07536df..ba5c2d7 100644
+--- a/src/components/settings/SettingsDialog.tsx
++++ b/src/components/settings/SettingsDialog.tsx
+@@ -1,7 +1,7 @@
+ import clsx from 'clsx'
+ import { useRef, useState, type ReactNode } from 'react'
+ import { IconDownloadOutline16, IconLoadingOutline16, IconUploadOutline14 } from '../base/icons.js'
+-import { BackupError, clearHistory, exportHistory, importHistory } from '../../services/chat/backup.js'
++import { BackupError, clearHistory, downloadSession, importHistory, type ImportMode } from '../../services/chat/backup.js'
+ import { useChatStore } from '../../services/chat/store.js'
+ import { useTranslate, type TranslationKey, type TranslationMessage } from '../../i18n/index.js'
+ import { Button } from '../base/Button.js'
+@@ -128,14 +128,11 @@ const ImportConfirm = ({
+       className={styles.importConfirm}
+       onClose={historyImport.cancel}
+       footer={
+-        <>
+-          <Button variant="outlined" size="m" autoFocus onClick={historyImport.cancel}>
+-            {t('cancel')}
+-          </Button>
+-          <Button variant="dangerOutlined" size="m" onClick={() => void historyImport.confirm()}>
+-            {t('historyImportConfirm')}
+-          </Button>
+-        </>
++        <div className={styles.deleteActions}>
++          <Button variant="outlined" size="m" autoFocus onClick={historyImport.cancel}>{t('cancel')}</Button>
++          <Button variant="dangerOutlined" size="m" onClick={() => void historyImport.confirm('replace')}>{t('historyReplace')}</Button>
++          <Button size="m" onClick={() => void historyImport.confirm('merge')}>{t('historyMerge')}</Button>
++        </div>
+       }
+     >
+       <div className={styles.importConfirmText}>{t('historyImportConfirmDescription')}</div>
+@@ -193,7 +190,7 @@ const useHistoryImport = () => {
+   const [status, setStatus] = useState<Status>(null)
+   const importing = useRef(false)
+ 
+-  const confirm = async () => {
++  const confirm = async (mode: ImportMode) => {
+     if (!file || importing.current) {
+       return
+     }
+@@ -203,9 +200,9 @@ const useHistoryImport = () => {
+     setStatus(null)
+     try {
+       const count = await importHistory(file, (processed, total) =>
+-        setProgress({ processed, total })
++        setProgress({ processed, total }), mode
+       )
+-      setStatus({ key: count === 1 ? 'historyImportedOne' : 'historyImported', params: { count } })
++      setStatus({ key: mode === 'merge' && !count ? 'historyMergeNoNew' : count === 1 ? 'historyImportedOne' : 'historyImported', params: { count } })
+     } catch {
+       setStatus({ key: 'historyImportFailed', error: true })
+     } finally {
+@@ -225,7 +222,7 @@ const useHistoryImport = () => {
+   }
+ }
+ 
+-/** 导入 = 覆盖：用选中文件替换本地全部会话与附件。 */
++/** 选择 ZIP 后，用户决定合并或覆盖当前本机账户。 */
+ const ImportHistory = ({
+   historyImport,
+   disabled,
+@@ -259,7 +256,7 @@ const ImportHistory = ({
+             ) : (
+               <>
+                 <IconUploadOutline14 />
+-                {t('upload')}
++                {t('historyChooseZip')}
+               </>
+             )}
+           </Button>
+@@ -303,10 +300,10 @@ const ImportHistory = ({
+   )
+ }
+ 
+-/** 将全部会话及图片导出为 ZIP 文件并下载 */
++/** 保存当前本机账户的会话、组织和附件原件。 */
+ const ExportHistory = ({ disabled }: { disabled: boolean }) => {
+   const t = useTranslate()
+-  const empty = useChatStore((state) => state.sessions.length === 0)
++  const ready = useChatStore(state => state.ready)
+   const [busy, setBusy] = useState(false)
+   const [status, setStatus] = useState<Status>(null)
+ 
+@@ -314,17 +311,7 @@ const ExportHistory = ({ disabled }: { disabled: boolean }) => {
+     setBusy(true)
+     setStatus(null)
+     try {
+-      const { name, blob } = await exportHistory()
+-      if (window.TokenSeekFiles) {
+-        await window.TokenSeekFiles.saveBlob(blob, name)
+-        return
+-      }
+-      const url = URL.createObjectURL(blob)
+-      const link = document.createElement('a')
+-      link.href = url
+-      link.download = name
+-      link.click()
+-      setTimeout(() => URL.revokeObjectURL(url), 10_000)
++      await downloadSession()
+     } catch (error) {
+       setStatus(errorStatus('historyExportFailed', error))
+     } finally {
+@@ -342,7 +329,7 @@ const ExportHistory = ({ disabled }: { disabled: boolean }) => {
+           variant="outlined"
+           size="m"
+           className={styles.cellButton}
+-          disabled={disabled || busy || empty}
++          disabled={disabled || busy || !ready}
+           onClick={() => void onExport()}
+         >
+           <IconDownloadOutline16 />
+diff --git a/src/i18n/en.ts b/src/i18n/en.ts
+index c3c65b6..a4b2320 100644
+--- a/src/i18n/en.ts
++++ b/src/i18n/en.ts
+@@ -154,21 +154,22 @@ export const en = {
+   apiKeyInvalid: 'Invalid API Key. Please check it and try again.',
+   apiKeyVerificationFailed: 'Verification failed: {message}',
+   historyImport: 'Import chat history',
++  historyChooseZip: 'Choose ZIP',
++  historyReplace: 'Replace history',
++  historyMerge: 'Merge chats',
++  historyMergeNoNew: 'No new chats. Existing conversations with matching IDs were kept.',
+   historyImportConfirm: 'Import',
+-  historyImportConfirmTitle: 'Import chat history?',
+-  historyImportConfirmDescription:
+-    'The uploaded chat history will replace all your current chats. Import anyway?',
+-  historyImportDescription:
+-    'Importing chat history replaces all local chats and attachments. Supports ZIP files exported from DeepSeek.',
++  historyImportConfirmTitle: 'How would you like to import this archive?',
++  historyImportConfirmDescription: 'Merging keeps existing chats and projects with matching IDs. Replacing overwrites all chats, attachments, projects and pins in this device profile and clears drafts.',
++  historyImportDescription: 'Import a TokenSeek or DeepSeek ZIP into this device profile. Choose merge or replace.',
+   historyImportedOne: 'Imported 1 chat',
+   historyImported: 'Imported {count} chats',
+   historyImportFailed:
+     'File import failed. The file format may be invalid, or the ZIP file may use an older chat export format. Please export your chat history from DeepSeek again and retry the import.',
+   historyExportFailed: 'Export failed: {message}',
+   exportAllLabel: 'Export all chats',
+-  historyExportDescription:
+-    'Includes all chat history and locally stored images. Other attachments retain file details only. Your API Key is not included.',
+-  exportAllDownload: 'Download',
++  historyExportDescription: 'Includes this device profile’s chats, projects, pins and available original attachments. API keys and account credentials are excluded.',
++  exportAllDownload: 'Save ZIP',
+   deleteAllSessions: 'Delete all chats',
+   deleteAllSessionsModalTitle: 'Once deleted, all chats will be cleared and cannot be recovered.',
+   deleteAllSessionsModalDescription:
+diff --git a/src/i18n/zh.ts b/src/i18n/zh.ts
+index d40d4e4..3a411b0 100644
+--- a/src/i18n/zh.ts
++++ b/src/i18n/zh.ts
+@@ -149,19 +149,22 @@ export const zh = {
+   apiKeyInvalid: 'API Key 无效，请检查后重试',
+   apiKeyVerificationFailed: '校验失败：{message}',
+   historyImport: '导入历史对话',
++  historyChooseZip: '选择 ZIP',
++  historyReplace: '覆盖恢复',
++  historyMerge: '合并导入',
++  historyMergeNoNew: '未新增会话，同 ID 会话已保留。',
+   historyImportConfirm: '确认导入',
+-  historyImportConfirmTitle: '确认导入历史对话？',
+-  historyImportConfirmDescription: '上传的历史对话会覆盖当前所有对话记录，是否确认导入？',
+-  historyImportDescription: '导入历史对话会覆盖全部本地对话和附件，支持 DeepSeek 导出的 ZIP 文件。',
++  historyImportConfirmTitle: '如何导入这份备份？',
++  historyImportConfirmDescription: '合并会保留本机同 ID 的会话和项目；覆盖恢复会替换当前本机账户里的全部会话、附件、项目及置顶，并清空草稿。',
++  historyImportDescription: '从 TokenSeek 或 DeepSeek 的 ZIP 导入到当前本机账户，可合并或覆盖。',
+   historyImportedOne: '已导入 1 个对话',
+   historyImported: '已导入 {count} 个对话',
+   historyImportFailed:
+     '文件导入失败，可能是文件格式错误或使用了旧版的对话导出 ZIP 文件，请前往 DeepSeek 重新导出历史对话文件后再次导入。',
+   historyExportFailed: '导出失败：{message}',
+   exportAllLabel: '导出所有历史对话',
+-  historyExportDescription:
+-    '包含所有历史对话及本地图片原件；其他附件仅保留文件信息，不包含 API Key。',
+-  exportAllDownload: '下载',
++  historyExportDescription: '包括当前本机账户的会话、项目、置顶和本机已有的附件原件。API Key 和账户凭证不会写入备份。',
++  exportAllDownload: '保存 ZIP',
+   deleteAllSessions: '删除所有对话',
+   deleteAllSessionsModalTitle: '删除后，所有对话都将被清空且无法找回',
+   deleteAllSessionsModalDescription: '本地保存的附件及未发送的草稿也将被删除。',
+diff --git a/src/services/chat/backup.ts b/src/services/chat/backup.ts
+index 73d9d55..938b8e3 100644
+--- a/src/services/chat/backup.ts
++++ b/src/services/chat/backup.ts
+@@ -1,58 +1,76 @@
+ import { formatDate } from '../../utils/format.js'
++import { profileStorageName } from '../profiles.js'
+ import * as db from './db.js'
+ import type { ImportProgressCallback } from './history/importArchive.js'
++import { refreshOrganization } from './organization.js'
+ import { replaceHistory, useChatStore } from './store.js'
+ import type { Session } from './types.js'
+ 
+ export { BackupError } from './history/errors.js'
++export type ImportMode = 'merge' | 'replace'
+ 
+-// 导入、导出与全部删除串行处理，避免读取归档时数据被清空或两个替换事务交错。
+ let backupQueue: Promise<unknown> = Promise.resolve()
+-
+ const enqueueBackup = <T>(run: () => Promise<T>): Promise<T> => {
+-  const task = backupQueue.then(run)
++  // Separate windows in the same profile share the same IndexedDB staging stores.
++  const task = backupQueue.then(() => navigator.locks
++    ? navigator.locks.request(profileStorageName('tokenseek:chat-transfer'), run)
++    : run())
+   backupQueue = task.catch(() => {})
+   return task
+ }
+ 
+-const backupFileName = (date: Date) => `deepseek_data-${formatDate(date)}.zip`
+-
+-/** 导出为历史会话导出格式的 ZIP，可再次导入。 */
+-export const exportHistory = (): Promise<{ name: string; blob: Blob }> =>
++export const exportHistory = (id?: string): Promise<{ name: string; blob: Blob }> =>
+   enqueueBackup(async () => {
+-    // 列表和已加载内容保留导出开始时的快照；未打开的会话逐条读取，不填满详情缓存。
+     const { sessions, sessionCache } = useChatStore.getState()
++    const selected = id === undefined ? sessions : sessions.filter(session => session.id === id)
++    if (id !== undefined && !selected.length) throw new Error('Conversation is no longer available')
+     async function* readSessions(): AsyncGenerator<Session> {
+-      for (const summary of sessions) {
++      for (const summary of selected) {
+         const session = Object.hasOwn(sessionCache, summary.id)
+           ? sessionCache[summary.id]
+           : await db.loadSession(summary.id)
+-        if (!session) {
+-          throw new Error(`History session disappeared during export: ${summary.id}`)
+-        }
+-        // 详情读取期间可能重命名，归档标题与开始时的列表保持一致。
++        if (!session) throw new Error('Conversation is no longer available')
+         yield { ...session, ...summary }
+       }
+     }
+     const { exportArchive } = await import('./history/exportArchive.js')
+-    const now = new Date()
+-    const blob = await exportArchive(readSessions())
+-    return { name: backupFileName(now), blob }
++    const blob = await exportArchive(readSessions(), await db.loadOrganization(), id !== undefined)
++    const date = formatDate(new Date())
++    const title = (selected[0]?.title || 'chat').replace(/[<>:"/\\|?*\u0000-\u001f]/g, '_').trim()
++    const name = id === undefined ? `deepseek_data-${date}.zip`
++      : `TokenSeek-${Array.from(title).slice(0, 60).join('')}-${date}.zip`
++    return { name, blob }
+   })
+ 
+-/**
+- * 确认覆盖后调用：先检查 ZIP 格式与版本，校验失败时保留正在生成的回答；
+- * 通过后从 ZIP 流式写入暂存，成功才替换原有会话与图片原件。返回导入的会话数。
+- */
+-export const importHistory = (file: File, onProgress?: ImportProgressCallback): Promise<number> =>
++export async function downloadSession(id?: string) {
++  const { name, blob } = await exportHistory(id)
++  if (window.TokenSeekFiles) {
++    await window.TokenSeekFiles.saveBlob(blob, name)
++    return
++  }
++  const url = URL.createObjectURL(blob)
++  try {
++    const link = document.createElement('a')
++    link.href = url
++    link.download = name
++    link.click()
++  } finally {
++    setTimeout(() => URL.revokeObjectURL(url), 10_000)
++  }
++}
++
++// The legacy programmatic entry point retains its replace behavior. The UI offers merge first.
++export const importHistory = (file: File, onProgress?: ImportProgressCallback, mode: ImportMode = 'replace'): Promise<number> =>
+   enqueueBackup(async () => {
+     const { checkArchiveFormat, importArchive } = await import('./history/importArchive.js')
+     await checkArchiveFormat(file)
+-    return replaceHistory(() => importArchive(file, onProgress))
++    const count = await replaceHistory(() => importArchive(file, onProgress), mode === 'merge')
++    await refreshOrganization()
++    return count
+   })
+ 
+-/** 确认删除后调用：以空历史原子替换全部本地会话与附件，保留 API Key 和其他设置。 */
+ export const clearHistory = (): Promise<void> =>
+   enqueueBackup(async () => {
+     await replaceHistory(async () => {})
++    await refreshOrganization()
+   })
+diff --git a/src/services/chat/db.ts b/src/services/chat/db.ts
+index b7288d4..30b4ca9 100644
+--- a/src/services/chat/db.ts
++++ b/src/services/chat/db.ts
+@@ -1,7 +1,8 @@
+ import { openDB, type DBSchema, type IDBPDatabase } from 'idb'
+ import { profileStorageName } from '../profiles.js'
+ import type { DraftSnapshot } from './drafts.js'
+-import type { ChatOrganization } from './organizationData.js'
++import { parseOrganization, withoutSession, type ChatOrganization } from './organizationData.js'
++import { createId } from '../../utils/id.js'
+ import { toSessionSummary, type Session, type SessionSummary } from './types.js'
+ 
+ /** IndexedDB 存储结构版本；新增或调整存储、索引时递增。 */
+@@ -94,6 +95,22 @@ export const saveResume = async (state: ResumeState, switching = false) => {
+   await Promise.all([tx.objectStore('resume').put(state, 'current'), tx.done])
+ }
+ 
++export const loadOrganization = async () => (await getDB()).get('organization', 'current')
++
++export const editOrganization = async (
++  update: (previous: ChatOrganization | undefined) => ChatOrganization
++): Promise<void> => {
++  const tx = (await getDB()).transaction('organization', 'readwrite')
++  await Promise.all([tx.done, (async () => {
++    try {
++      await tx.store.put(update(await tx.store.get('current')), 'current')
++    } catch (error) {
++      abortTransaction(tx)
++      throw error
++    }
++  })()])
++}
++
+ export const loadSessionSummaries = async (): Promise<SessionSummary[]> =>
+   (await (await getDB()).getAll('sessionSummaries')).map(toSessionSummary)
+ 
+@@ -144,7 +161,7 @@ export const renameSession = async (id: string, title: string): Promise<void> =>
+ 
+ /** 删除会话，仅清理已无会话引用的本地原件；远端文件不删。 */
+ export const deleteSession = async (sessionId: string): Promise<void> => {
+-  const tx = (await getDB()).transaction(['sessions', 'sessionSummaries', 'files'], 'readwrite')
++  const tx = (await getDB()).transaction(['sessions', 'sessionSummaries', 'files', 'organization'], 'readwrite')
+   await Promise.all([
+     (async () => {
+       try {
+@@ -152,6 +169,9 @@ export const deleteSession = async (sessionId: string): Promise<void> => {
+         const summary = await summaries.get(sessionId)
+         await tx.objectStore('sessions').delete(sessionId)
+         await summaries.delete(sessionId)
++        const organization = tx.objectStore('organization')
++        const current = await organization.get('current')
++        if (current) await organization.put(withoutSession(current, sessionId), 'current')
+         for (const id of summary?.fileIds ?? []) {
+           if ((await summaries.index('fileIds').count(id)) === 0) {
+             await tx.objectStore('files').delete(id)
+@@ -223,7 +243,7 @@ export const updateStagingFileTypes = async (
+               continue
+             }
+             for (const file of message.files) {
+-              const type = types.get(file.id) ?? ''
++              const type = types.get(file.id) || file.mimeType
+               if (file.mimeType !== type) {
+                 file.mimeType = type
+                 changed = true
+@@ -247,10 +267,12 @@ export const updateStagingFileTypes = async (
+  * 导入完成后用暂存替换正式数据：同一事务中替换会话、摘要和原件，并清空暂存。
+  * 逐条游标复制，同一时间只读取一条记录；事务失败时整体回滚，正式数据不变。
+  */
+-export const commitStaging = async (): Promise<SessionSummary[]> => {
++export const commitStaging = async (
++  organization?: ChatOrganization
++): Promise<SessionSummary[]> => {
+   const summaries: SessionSummary[] = []
+   const tx = (await getDB()).transaction(
+-    ['sessions', 'sessionSummaries', 'files', 'sessionsStaging', 'filesStaging', 'resume'],
++    ['sessions', 'sessionSummaries', 'files', 'sessionsStaging', 'filesStaging', 'resume', 'organization'],
+     'readwrite'
+   )
+   const move = async (from: 'sessionsStaging' | 'filesStaging', to: 'sessions' | 'files') => {
+@@ -281,12 +303,77 @@ export const commitStaging = async (): Promise<SessionSummary[]> => {
+   }
+   await Promise.all([
+     move('sessionsStaging', 'sessions'), move('filesStaging', 'files'),
+-    tx.objectStore('resume').clear(), tx.done,
++    tx.objectStore('resume').clear(),
++    (async () => {
++      try {
++        const store = tx.objectStore('organization')
++        // Deleting chats keeps empty project folders. Restoring an archive restores its full organization.
++        const value = organization ?? parseOrganization(await store.get('current'), new Set<string>())
++        await store.put(value, 'current')
++      } catch (error) {
++        abortTransaction(tx)
++        throw error
++      }
++    })(), tx.done,
+   ])
+   // 直接返回本次提交的列表，调用方无需在替换成功后再发起可能失败的读取。
+   return summaries
+ }
+ 
++// Merge only new conversations. Give imported file references fresh IDs so a foreign
++// attachment can never overwrite a local original, even when archives share identifiers.
++export async function mergeStaging(organization: ChatOrganization, known: Set<string>): Promise<SessionSummary[]> {
++  const added: SessionSummary[] = []
++  const tx = (await getDB()).transaction(
++    ['sessions', 'sessionSummaries', 'files', 'sessionsStaging', 'filesStaging', 'organization'], 'readwrite'
++  )
++  await Promise.all([tx.done, (async () => {
++    try {
++      const sessions = tx.objectStore('sessions')
++      const files = tx.objectStore('files')
++      const staged = tx.objectStore('sessionsStaging')
++      const originals = tx.objectStore('filesStaging')
++      const ids = new Map<string, string>()
++      for (let cursor = await staged.openCursor(); cursor; cursor = await cursor.continue()) {
++        const session = cursor.value
++        if (known.has(session.id) || await sessions.getKey(session.id) !== undefined) continue
++        for (const message of session.messages) {
++          if (message.role !== 'user') continue
++          for (const file of message.files) {
++            let id = ids.get(file.id)
++            if (!id) {
++              id = createId()
++              ids.set(file.id, id)
++              const original = await originals.get(file.id)
++              if (original) await files.add({ id, blob: original.blob })
++            }
++            file.id = id
++          }
++        }
++        await sessions.add(session)
++        const summary = storedSummary(session)
++        await tx.objectStore('sessionSummaries').add(summary)
++        added.push(toSessionSummary(summary))
++      }
++      const store = tx.objectStore('organization')
++      const local = parseOrganization(await store.get('current'))
++      const incoming = parseOrganization(organization, new Set(added.map(item => item.id)))
++      const projects = new Set(local.projects.map(project => project.id))
++      await store.put({
++        projects: local.projects.concat(incoming.projects.filter(project => !projects.has(project.id))),
++        pinned: [...new Set([...local.pinned, ...incoming.pinned])],
++        assignments: { ...local.assignments, ...incoming.assignments },
++      }, 'current')
++      await staged.clear()
++      await originals.clear()
++    } catch (error) {
++      abortTransaction(tx)
++      throw error
++    }
++  })()])
++  return added
++}
++
+ /** 本地存储失败不打断对话，只在控制台留痕 */
+ export const reportStorageError = (action: string) => (error: unknown) => {
+   // eslint-disable-next-line no-console
+diff --git a/src/services/chat/history/exportArchive.ts b/src/services/chat/history/exportArchive.ts
+index 7fafd57..26b8c1c 100644
+--- a/src/services/chat/history/exportArchive.ts
++++ b/src/services/chat/history/exportArchive.ts
+@@ -1,6 +1,7 @@
+ import * as db from '../db.js'
++import { parseOrganization, type ChatOrganization } from '../organizationData.js'
+ import type { Session } from '../types.js'
+-import { EXPORT_FORMAT_VERSION, type Manifest, type SessionIndexEntry } from './format.js'
++import { EXPORT_FORMAT_VERSION, type SessionIndexEntry } from './format.js'
+ import { INDEX_PATH, MANIFEST_PATH, imagePath, sessionPath } from './paths.js'
+ import { toIndexEntry, toSessionFile } from './toArchive.js'
+ import { writeArchive } from './zipWriter.js'
+@@ -9,13 +10,14 @@ const json = (value: unknown) => new Blob([JSON.stringify(value)], { type: 'appl
+ 
+ /**
+  * 按导出格式生成 ZIP：manifest → 全部会话 JSON → index → 全部图片。没有账号信息，不写 user.json。
+- * 只写出本地有原件的图片，每个会话目录各写一份；其他附件只有元数据。
++ * 可用附件原件保存在对应会话目录；无本地原件的附件保留元数据。
+  */
+ export const exportArchive = async (
+-  sessions: Iterable<Session> | AsyncIterable<Session>
++  sessions: Iterable<Session> | AsyncIterable<Session>,
++  organization?: ChatOrganization,
++  singleSession = false
+ ): Promise<Blob> => {
+-  const manifest: Manifest = { export_format_version: EXPORT_FORMAT_VERSION }
+-  const entries = [{ name: MANIFEST_PATH, blob: json(manifest) }]
++  const entries: { name: string; blob: Blob }[] = []
+   const imageEntries: { name: string; blob: Blob }[] = []
+   const index: SessionIndexEntry[] = []
+   const originals = new Map<string, Blob | undefined>()
+@@ -23,16 +25,16 @@ export const exportArchive = async (
+     for (const message of session.messages) {
+       if (message.role === 'user') {
+         for (const file of message.files) {
+-          if (file.isImage && !originals.has(file.id)) {
++          if (!originals.has(file.id)) {
+             originals.set(file.id, await db.loadFile(file.id))
+           }
+         }
+       }
+     }
+     const images = new Map<string, Blob>()
+-    const data = toSessionFile(session, ({ id, name, isImage }) => {
++    const data = toSessionFile(session, ({ id, name }) => {
+       const blob = originals.get(id)
+-      if (!blob || !isImage) {
++      if (!blob) {
+         return null
+       }
+       const path = imagePath(session.id, id, name)
+@@ -45,6 +47,14 @@ export const exportArchive = async (
+     }
+     index.push(toIndexEntry(data))
+   }
++  const included = parseOrganization(organization, new Set(index.map(session => session.id)))
++  if (singleSession) {
++    const used = new Set(Object.values(included.assignments))
++    included.projects = included.projects.filter(project => used.has(project.id))
++  }
++  entries.unshift({ name: MANIFEST_PATH, blob: json({
++    export_format_version: EXPORT_FORMAT_VERSION, tokenseek_organization: included,
++  }) })
+   entries.push({ name: INDEX_PATH, blob: json(index) })
+   return writeArchive(entries.concat(imageEntries))
+ }
+diff --git a/src/services/chat/history/format.ts b/src/services/chat/history/format.ts
+index 0987740..710c25f 100644
+--- a/src/services/chat/history/format.ts
++++ b/src/services/chat/history/format.ts
+@@ -169,6 +169,7 @@ export type FileEntry = {
+   inserted_at: Iso8601Utc
+   /** 图片导出成功时为 ZIP 条目名，否则为 null；条目也可能不存在 */
+   export_path: string | null
++  tokenseek_mime?: string
+   is_image: boolean
+   width: number | null
+   height: number | null
+diff --git a/src/services/chat/history/importArchive.ts b/src/services/chat/history/importArchive.ts
+index 4bd21d3..997354f 100644
+--- a/src/services/chat/history/importArchive.ts
++++ b/src/services/chat/history/importArchive.ts
+@@ -1,4 +1,5 @@
+ import * as db from '../db.js'
++import { parseOrganization, type ChatOrganization } from '../organizationData.js'
+ import type { Session } from '../types.js'
+ import { BackupError, fail } from './errors.js'
+ import type { SessionIndexEntry } from './format.js'
+@@ -90,10 +91,11 @@ export const checkArchiveFormat = async (file: File): Promise<void> => {
+ export const importArchive = async (
+   file: File,
+   onProgress?: ImportProgressCallback
+-): Promise<void> => {
++): Promise<ChatOrganization> => {
+   if (!(await isZipFile(file))) {
+     fail('backupUnrecognized')
+   }
++  let rawOrganization: unknown
+   const imported = new Set<string>()
+   const firstImageOffset = new Map<string, number>()
+   const fileSessions = new Map<string, Set<string>>()
+@@ -133,7 +135,7 @@ export const importArchive = async (
+     imageBatch = []
+     imageBatchBytes = 0
+   }
+-  const saveImage = async (entry: ArchiveEntry, id: string) => {
++  const saveFile = async (entry: ArchiveEntry, id: string, mimeType: string) => {
+     if (entry.offset >= (firstImageOffset.get(id) ?? Infinity)) {
+       await skipEntry(entry)
+       return
+@@ -141,7 +143,7 @@ export const importArchive = async (
+     if (imageBatchBytes + entry.size > maxImageBatchBytes) {
+       await flushImages()
+     }
+-    const blob = await readEntry(entry, imageType)
++    const blob = await readEntry(entry, mimeType ? () => mimeType : imageType)
+     imageBatch.push({ id, blob })
+     imageBatchBytes += blob.size
+     firstImageOffset.set(id, entry.offset)
+@@ -172,7 +174,11 @@ export const importArchive = async (
+         if (path !== MANIFEST_PATH) {
+           fail('backupUnrecognized')
+         }
+-        checkManifest(await readJson(entry))
++        const header = await readJson(entry)
++        checkManifest(header)
++        if (header && typeof header === 'object' && 'tokenseek_organization' in header) {
++          rawOrganization = header.tokenseek_organization
++        }
+         manifest = true
+       } else if (path === USER_PATH && !index && imported.size === 0) {
+         // 账号信息（已脱敏）不导入；文件可能缺失。
+@@ -187,10 +193,17 @@ export const importArchive = async (
+         }
+         imported.add(sessionId)
+         currentSessionId = sessionId
++        const expected = new Set(local.files.keys())
+         for (const fileEntry of filesBySession.get(sessionId) ?? []) {
+-          const id = local.images.get(fileEntry.path)
+-          await (id === undefined ? skipEntry(fileEntry) : saveImage(fileEntry, id))
++          expected.delete(fileEntry.path)
++          const attachment = local.files.get(fileEntry.path)
++          if (attachment) {
++            await saveFile(fileEntry, attachment.id, attachment.mimeType)
++          } else {
++            await skipEntry(fileEntry)
++          }
+         }
++        if (expected.size && rawOrganization !== undefined) fail('backupInvalidFiles')
+         for (const message of local.session.messages) {
+           if (message.role !== 'user') {
+             continue
+@@ -256,4 +269,5 @@ export const importArchive = async (
+   if (totalSessions > 0) {
+     onProgress?.(imported.size, totalSessions)
+   }
++  return parseOrganization(rawOrganization, imported)
+ }
+diff --git a/src/services/chat/history/schema.ts b/src/services/chat/history/schema.ts
+index c2f4a75..c1c53b9 100644
+--- a/src/services/chat/history/schema.ts
++++ b/src/services/chat/history/schema.ts
+@@ -96,6 +96,9 @@ const fileEntry: Read<FileEntry> = (value) => {
+     inserted_at: time(item.inserted_at),
+     export_path: nullable(string)(item.export_path),
+     is_image: boolean(item.is_image),
++    ...(typeof item.tokenseek_mime === 'string' &&
++      /^[a-z\d.+-]+\/[a-z\d.+-]+$/i.test(item.tokenseek_mime)
++      ? { tokenseek_mime: item.tokenseek_mime } : {}),
+     width: nullable(count)(item.width),
+     height: nullable(count)(item.height),
+   }
+diff --git a/src/services/chat/history/toArchive.ts b/src/services/chat/history/toArchive.ts
+index 3f3fcf7..37d8bf6 100644
+--- a/src/services/chat/history/toArchive.ts
++++ b/src/services/chat/history/toArchive.ts
+@@ -35,6 +35,7 @@ const userFragments = (message: UserMessage, exportImage: ExportImage): Fragment
+       inserted_at: iso(message.createdAt),
+       export_path: exportImage({ id: file.id, name: file.name, isImage }),
+       is_image: isImage,
++      ...(file.mimeType ? { tokenseek_mime: file.mimeType } : {}),
+       width: null,
+       height: null,
+     }
+diff --git a/src/services/chat/history/toLocal.ts b/src/services/chat/history/toLocal.ts
+index 5f79201..17784ea 100644
+--- a/src/services/chat/history/toLocal.ts
++++ b/src/services/chat/history/toLocal.ts
+@@ -19,8 +19,8 @@ import { sessionFilesDir } from './paths.js'
+ 
+ export type LocalSession = {
+   session: Session
+-  /** 本会话目录下应存在的图片：ZIP 条目名 → 文件 ID */
+-  images: Map<string, string>
++  /** 本会话目录下应存在的附件，按 ZIP 条目名索引。 */
++  files: Map<string, { id: string; mimeType: string }>
+ }
+ 
+ const time = (value: string) => Date.parse(value)
+@@ -32,7 +32,7 @@ const toFile = (file: FileEntry): FileAttachment => ({
+   size: file.file_size,
+   isImage: file.is_image,
+   // 图片身份来自归档；原件随后从 ZIP 读取后补充具体 MIME。
+-  mimeType: '',
++  mimeType: file.is_image ? '' : file.tokenseek_mime ?? '',
+ })
+ 
+ const toUser = (message: ChatMessage): UserMessage => ({
+@@ -273,7 +273,7 @@ const buildTree = (file: SessionFile): Pick<Session, 'messages' | 'rootMessageId
+   return { messages, rootMessageId: current.id }
+ }
+ 
+-/** 转换单个会话，并列出本会话目录下需要从 ZIP 读取的图片。 */
++/** 转换单个会话，并列出本会话目录下需要从 ZIP 读取的附件。 */
+ export const toLocalSession = (file: SessionFile): LocalSession => {
+   const session: Session = {
+     id: file.id,
+@@ -284,31 +284,28 @@ export const toLocalSession = (file: SessionFile): LocalSession => {
+     updatedAt: time(file.updated_at),
+     ...buildTree(file),
+   }
+-  const images = new Map<string, string>()
++  const files: LocalSession['files'] = new Map()
+   for (const message of file.messages) {
+     for (const item of message.fragments) {
+       if (item.type !== 'FILE') {
+         continue
+       }
+       for (const entry of item.files) {
+-        if (!entry.is_image) {
+-          continue
+-        }
+         // 读取端把条目名规范为 NFC，引用也按同样规则比较。
+         const path = entry.export_path?.normalize('NFC')
+         if (path === undefined) {
+           continue
+         }
+-        // 图片只能在本会话目录下，同一条目不能对应不同文件。
++        // 附件只能在本会话目录下，同一条目不能对应不同文件。
+         if (
+           !path.startsWith(sessionFilesDir(file.id)) ||
+-          (images.get(path) ?? entry.id) !== entry.id
++          (files.get(path)?.id ?? entry.id) !== entry.id
+         ) {
+           fail('backupInvalidFiles')
+         }
+-        images.set(path, entry.id)
++        files.set(path, { id: entry.id, mimeType: entry.is_image ? '' : entry.tokenseek_mime ?? '' })
+       }
+     }
+   }
+-  return { session, images }
++  return { session, files }
+ }
+diff --git a/src/services/chat/store.ts b/src/services/chat/store.ts
+index c34eeee..445e28c 100644
+--- a/src/services/chat/store.ts
++++ b/src/services/chat/store.ts
+@@ -434,26 +434,34 @@ const waitForIdle = (sessionId?: string) =>
+  * 替换历史对话：先写入暂存，成功后原子替换旧记录；写入为空即删除全部会话与附件。
+  * 期间停止生成并禁止修改会话；失败时清除暂存，保留原有记录。
+  */
+-export const replaceHistory = async (write: () => Promise<void>): Promise<number> => {
++export const replaceHistory = async (
++  write: () => Promise<import('./organizationData.js').ChatOrganization | void>,
++  merge = false
++): Promise<number> => {
+   if (get().importingHistory) {
+     throw new Error('History replacement is already in progress')
+   }
+   set({ importingHistory: true })
+   try {
+-    for (const controller of Object.values(get().streaming)) {
+-      controller.abort()
+-    }
+-    // 已开始的单条删除先同步到内存，避免本次替换失败后列表残留已被删除的记录。
+-    await Promise.all(deletionTasks)
+-    historyEpoch += 1
+-    initTask = undefined
+-    sessionLoads.clear()
+-    await waitForIdle()
+     await db.clearStaging()
+     let summaries: SessionSummary[]
+     try {
+-      await write()
+-      summaries = await db.commitStaging()
++      const organization = await write()
++      // Validation runs in staging while existing replies can finish. An invalid archive
++      // must not interrupt those streams or discard a draft.
++      await Promise.all(deletionTasks)
++      if (merge) {
++        if (!organization) throw new Error('Missing archive metadata')
++        const added = await db.mergeStaging(organization, new Set(get().sessions.map(session => session.id)))
++        set(state => ({ sessions: sortSessions([...state.sessions, ...added]) }))
++        return added.length
++      }
++      for (const controller of Object.values(get().streaming)) controller.abort()
++      historyEpoch += 1
++      initTask = undefined
++      sessionLoads.clear()
++      await waitForIdle()
++      summaries = await db.commitStaging(organization || undefined)
+     } catch (error) {
+       await db.clearStaging().catch(db.reportStorageError('clear unfinished history replacement'))
+       throw error

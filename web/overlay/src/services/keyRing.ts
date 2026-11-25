@@ -1,3 +1,4 @@
+import { getActiveWorkspaceId, isSwitchingProfile } from './profiles.js'
 export type SavedKey = { id: string; name: string; suffix: string }
 export type KeyRing = { activeId: string | null; entries: SavedKey[] }
 export type KeyAction = 'read' | 'add' | 'select' | 'rename' | 'remove'
@@ -17,7 +18,7 @@ function preview(action: KeyAction, id: string, name: string, secret: string): S
     try {
       // Existing preview data remains available; this version never writes a secret to localStorage.
       const previous = localStorage.getItem('chat-demo:api-key')
-      if (previous) {
+      if (getActiveWorkspaceId() === 'default' && previous) {
         previewActive = 'imported'
         previewKeys.push({ id: previewActive, name: '', secret: previous })
       }
@@ -60,9 +61,14 @@ function preview(action: KeyAction, id: string, name: string, secret: string): S
 }
 
 export function accessKeys(action: KeyAction, id = '', name = '', secret = ''): Snapshot | null {
+  if (action !== 'read' && isSwitchingProfile()) return null
   if (!inAndroid()) return preview(action, id, name.trim(), secret)
   try {
-    const result = window.TokenSeekSecrets?.manageKeys(action, id, name.trim(), secret)
+    const bridge = window.TokenSeekSecrets
+    const profile = getActiveWorkspaceId()
+    const result = bridge?.manageProfileKeys
+      ? bridge.manageProfileKeys(profile, action, id, name.trim(), secret)
+      : profile === 'default' ? bridge?.manageKeys(action, id, name.trim(), secret) : null
     if (!result) return null
     return JSON.parse(result) as Snapshot
   } catch {
@@ -71,3 +77,17 @@ export function accessKeys(action: KeyAction, id = '', name = '', secret = ''): 
 }
 
 export const isKeyPreview = () => !inAndroid()
+
+
+// Other accounts expose labels and suffixes only. Switching is required to use a key.
+export function listProfileKeys(profile: string): KeyRing | null {
+  if (profile === getActiveWorkspaceId()) {
+    const state = accessKeys('read')
+    return state && { activeId: state.activeId, entries: state.entries }
+  }
+  if (!inAndroid()) return { activeId: null, entries: [] }
+  try {
+    const data = window.TokenSeekSecrets?.manageProfileKeys?.(profile, 'list', '', '', '')
+    return data ? JSON.parse(data) as KeyRing : null
+  } catch { return null }
+}

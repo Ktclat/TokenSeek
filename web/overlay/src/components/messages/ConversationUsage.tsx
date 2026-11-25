@@ -15,22 +15,13 @@ export function ConversationUsage({ messages, visible }: { messages: Message[]; 
   const position = index < 0 ? branchReplies.length - 1 : index
   const current = branchReplies[position]
   const replies = messages.filter((message): message is AssistantMessage => message.role === 'assistant')
-  if (!replies.length) return null
   const hasCurrent = current?.role === 'assistant'
   const session = scope === 'session' || !hasCurrent
   const conversation = summarizeUsage(replies)
   const usage = session ? conversation : summarizeUsage([current])
   const format = (count: bigint) => count.toLocaleString(locale)
   return (
-    <details className={styles.panel}>
-      <summary>
-        <span>{t('conversationUsage')}</span>
-        <span className={styles.value}>
-          {conversation.confirmed > 0
-            ? t(conversation.incomplete ? 'usagePartialCount' : 'usageTokenCount', { total: format(conversation.total) })
-            : t('usageNoFinal')}
-        </span>
-      </summary>
+    <div className={styles.panel}>
       {hasCurrent && (
         <div role="group" aria-label={t('usageScope')} className={styles.scopes}>
           <button type="button" aria-pressed={session} onClick={() => setScope('session')}>{t('usageSession')}</button>
@@ -65,7 +56,7 @@ export function ConversationUsage({ messages, visible }: { messages: Message[]; 
       {usage.confirmed === 0 && <p>{t('usageNoFinal')}</p>}
       {usage.incomplete > 0 && <p>{t('usageIncomplete', { count: usage.incomplete })}</p>}
       {usage.snapshots > 0 && <p>{t('usageSnapshots', { total: format(usage.snapshotTokens) })}</p>}
-      {session && <p>{t('usageAllBranches')}</p>}
-    </details>
+      {session && replies.length > 0 && <p>{t('usageAllBranches')}</p>}
+    </div>
   )
 }

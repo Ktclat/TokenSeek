@@ -4,28 +4,18 @@
   align-items: center;
   flex-direction: column;
   width: min(100%, 420px);
-  margin: clamp(12px, 9dvh, 88px) auto 0;
+  margin: 16px auto 0;
   padding: 30px 24px 18px;
   border-radius: 22px;
   background: var(--dsw-alias-bg-base);
   text-align: center;
   p {
     max-width: 30ch;
-    margin: 18px auto 24px;
+    margin: 0 auto 20px;
     font-size: 15px;
     line-height: 1.65;
     color: var(--dsw-alias-label-secondary);
   }
-}
-.avatar {
-  display: grid;
-  width: 56px;
-  height: 56px;
-  place-items: center;
-  border-radius: 50%;
-  background: var(--dsw-alias-button-ghost-active-fill);
-  color: var(--dsw-alias-brand-text);
-  svg { width: 29px; height: 29px; }
 }
 .primary, .secondary {
   display: flex;

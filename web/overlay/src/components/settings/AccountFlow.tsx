@@ -2,6 +2,7 @@ import { useTranslate } from '../../i18n/index.js'
 import { useSettings } from '../../services/settings.js'
 import { Button } from '../base/Button.js'
 import { closeSettings, pushSettings } from './settingsDialogState.js'
+import { ProfileHeader } from './ProfileSettings.js'
 import { SettingsRow } from './SettingsRows.js'
 import { BalanceSummary } from './Wallet.js'
 import { platformUrls } from './OfficialPlatform.js'
@@ -35,23 +36,28 @@ export const AccountFlow = ({ apiKey }: { apiKey: string | null }) => {
   const active = useSettings(({ keyRing }) => keyRing.entries.find(key => key.id === keyRing.activeId))
   if (!apiKey) {
     return (
-      <section className={styles.login}>
-        <span className={styles.avatar}><AccountIcon /></span>
-        <p>{text.signInHelp}</p>
-        <a className={styles.primary} href={platformUrls.login} target="_blank" rel="noopener noreferrer">{text.login}</a>
-        <button className={styles.secondary} type="button" onClick={() => pushSettings('keys')}>{text.useKey}</button>
-      </section>
+      <>
+        <ProfileHeader />
+        <section className={styles.login}>
+          <p>{text.signInHelp}</p>
+          <a className={styles.primary} href={platformUrls.login} target="_blank" rel="noopener noreferrer">{text.login}</a>
+          <button className={styles.secondary} type="button" onClick={() => pushSettings('keys')}>{text.useKey}</button>
+        </section>
+      </>
     )
   }
   const selected = [active?.name, '•••• ' + (active?.suffix ?? apiKey.slice(-4))].filter(Boolean).join(' · ')
   return (
-    <section className={styles.account}>
-      <BalanceSummary apiKey={apiKey} key={apiKey} />
-      <div className={styles.identity}>
-        <SettingsRow label={text.currentKey} value={selected} onClick={() => pushSettings('keys')} />
-      </div>
-      <Button block onClick={closeSettings}>{t('walletChat')}</Button>
-      <a className={styles.secondary} href={platformUrls.account} target="_blank" rel="noopener noreferrer">{text.viewAccount}</a>
-    </section>
+    <>
+      <ProfileHeader />
+      <section className={styles.account}>
+        <BalanceSummary apiKey={apiKey} key={apiKey} />
+        <div className={styles.identity}>
+          <SettingsRow label={text.currentKey} value={selected} onClick={() => pushSettings('keys')} />
+        </div>
+        <Button block onClick={closeSettings}>{t('walletChat')}</Button>
+        <a className={styles.secondary} href={platformUrls.account} target="_blank" rel="noopener noreferrer">{text.viewAccount}</a>
+      </section>
+    </>
   )
 }

@@ -1,48 +1,55 @@
 # TokenSeek 安卓客户端
 
-TokenSeek 把 DeepSeek 的聊天体验和开放平台账户余额放在同一个安卓应用里。聊天界面基于 DeepSeek 官方开源的 `chat-demo`，手机使用用户自己的官方 API Key 直接调用 DeepSeek。DeepSeek 官方安卓助手提供免费聊天。在 TokenSeek 中发送消息走开放平台 API，模型用量由 DeepSeek 按开放平台规则计费。[官方安卓版](https://www.deepseek.com/en/download/) · [官方聊天 Demo](https://github.com/deepseek-ai/chat-demo) · [官方计价说明](https://api-docs.deepseek.com/zh-cn/quick_start/pricing/)
+TokenSeek 是一个独立的 DeepSeek 安卓客户端。聊天界面基于官方开源的 `chat-demo` v0.1.4，随 APK 一起安装。聊天直接使用你选中的开放平台 API Key，按 DeepSeek 的 API 计价规则结算。[官方聊天 Demo](https://github.com/deepseek-ai/chat-demo/tree/v0.1.4) · [官方 API 计价](https://api-docs.deepseek.com/zh-cn/quick_start/pricing/)
 
-## 第一次使用
+## 登录、充值和密钥
 
-1. 在「DeepSeek 账户」点「登录 DeepSeek」。应用内会显示官方登录页，顶部保留返回、页面名称和真实域名，给登录表单和手机键盘留出空间。[官方登录页](https://platform.deepseek.com/sign_in)
-2. 充值时打开「钱包」，点充值并在官方页面核对账号和金额。如果官网先要求登录，TokenSeek 会记住这次要充值。返回钱包后，应用用当前选中的 Key 向官网重新查询余额。[官方充值入口](https://platform.deepseek.com/top_up)
-3. 在「API 密钥」中创建或管理官方密钥。要将新密钥用于聊天，在官网上复制它，点「用于聊天」，返回已展开的输入框粘贴并验证。已有密钥也可以直接填入。验证通过后，它才成为聊天和余额查询使用的密钥。[官方密钥管理](https://platform.deepseek.com/api_keys)
+1. 从聊天侧栏左下角点头像，进入「DeepSeek 账户」。点「登录 DeepSeek」后在应用内的官方页面登录，顶部会显示当前域名。[开放平台登录](https://platform.deepseek.com/sign_in)
+2. 在侧栏右下角点「⋮ → 钱包 → 充值」，在官方页面核对账户、金额和支付方式。官网要求重新登录时，应用会记住充值任务。支付宝和微信可从官方收银台唤起。手机无法打开支付应用时，有官方网页回退地址的链接可继续网页支付，也可重新打开官方充值页。返回后可以核对到账情况。[官方充值页](https://platform.deepseek.com/top_up)
+3. 在「设置 → API 密钥」打开官方密钥管理页，可查看、创建或撤销该官方账户的密钥。要将新密钥用于聊天，在官网复制，点「用于聊天」，返回后粘贴并验证。已有密钥也可直接粘贴验证。应用使用当前选中的密钥发消息、查询余额。[官方密钥管理](https://platform.deepseek.com/api_keys) · [首次调用 API](https://api-docs.deepseek.com/zh-cn/)
 
-登录、充值和密钥管理共享应用内的网页会话。官网跳转到登录时，Android 顶栏会切换到登录任务。若登录后官网已进入原业务页面，用户可以直接继续。若回到了官方首页，应用会尝试一次回到原业务页面。返回键先收起键盘、退出当前子页面，最后回到发起操作的地方。外部身份或支付提供方需要浏览器、微信或支付宝时，由用户点选是否继续。[Google 登录政策](https://developers.google.com/identity/protocols/oauth2/policies)
+「API 密钥」按本机账户展示保存的全部密钥。可命名、切换、取消选用或移除，其他账户的列表显示名称和尾号，切换账户即可编辑。密钥在手机上使用 Android Keystore 加密保存。要停止一把密钥在所有设备上的使用，请在官方密钥管理页撤销它。
 
-本机支持给多把聊天密钥命名、切换或移除，使用 Android Keystore 加密保存。取消选用或移除当前 Key 后，可手动选用另一把。要在 DeepSeek 服务器上撤销密钥，请在应用内的官方密钥管理页操作。
+钱包按币种显示总余额、充值余额和赠金。侧栏昵称下方也会显示已连接账户的余额。支付应用返回时会重新查询余额，到账和订单状态以官方平台为准。[官方余额接口](https://api-docs.deepseek.com/zh-cn/api/get-user-balance/)
 
-## 钱包怎样显示余额
+## 侧栏、账户和项目
 
-TokenSeek 调用官方 `GET /user/balance`，按币种分别显示总余额、充值余额和赠金。账户可用状态来自 `is_available`。余额接口返回当前快照，具体交易结果请以官方支付页面为准。[官方余额接口](https://api-docs.deepseek.com/zh-cn/api/get-user-balance/)
+- 在聊天页向右拖动即可跟手拉开侧栏，向左拖动收起。点聊天页右上角可新建对话。
+- 在会话的更多菜单中可以置顶、移入或移出项目。项目内置顶的对话排在该项目最前，项目外的置顶对话集中显示，其余未分组对话列在「最近对话」。删除项目会保留其中的对话。
+- 点侧栏左下角头像可以修改本机用户名、昵称和圆形头像，也可新建或切换本机账户。昵称默认采用用户名。每个账户有自己的会话、草稿、附件、项目、密钥和回答偏好。原有记录保留在默认账户。头像只在本机裁剪、保存。
+- 每个本机账户都可登录对应的官方平台账户。支持多配置的 Android System WebView 可分别保存各账户的官网登录状态。旧版 WebView 共用网页登录时，官方窗口会持续提示核对账号。若选择外部浏览器继续登录或支付，也要在浏览器中核对账号。
 
-截至 2026 年 11 月 24 日，DeepSeek 的公开接入指南要求用户在开放平台申请 API Key。网页登录状态由应用内的官方页面管理。TokenSeek 使用已验证并选用的 Key 查询余额和调用 API。充值、选择支付方式和创建官方 Key 均在 DeepSeek 官方页面完成。[首次调用 API](https://api-docs.deepseek.com/zh-cn/) · [官方错误码与充值指引](https://api-docs.deepseek.com/zh-cn/quick_start/error_codes/)
+## 聊天、上下文和设置
 
-## 聊天功能对标
+输入框可直接选择 Flash 或 Pro。新会话默认预选 Flash，已有会话分别保存模型选择。重新生成时使用当前模型，续写沿用原回答的模型。Flash 可使用智能搜索、链接阅读与附件问答。Pro 支持文本对话与深度思考。上游 Demo 还提供流式输出、来源引用、语音输入与朗读及消息编辑。[官方聊天指南](https://api-docs.deepseek.com/zh-cn/guides/build_a_chatbot/) · [DSH 模型选择](https://github.com/deepseek-ai/deepseek-harness/blob/master/packages/client/ui-model-selection/README.md)
 
-本版本固定使用 DeepSeek 官方 `chat-demo` v0.1.4。上游提供流式回答、深度思考、智能搜索及来源引用、阅读链接、附件问答、语音输入与朗读、会话管理、消息编辑与重新生成，以及历史记录导入导出。会话存储在本机。官方 App 的云端历史同步需要另行接入。TokenSeek 是独立客户端。[锁定版本的源码](https://github.com/deepseek-ai/chat-demo/tree/v0.1.4) · [官方功能对照](https://api-docs.deepseek.com/zh-cn/guides/build_a_chatbot/)
+输入框内的圆环表示当前分支预计剩余的上下文。点圆环可查看剩余空间、草稿估算，以及整个会话和每次回答的实际用量；重新生成的其他分支也算入会话累计。实际用量采用 API 返回的 token 记录。附件内容等无法可靠估算时，圆环显示「—」，详情会说明原因。[官方模型列表](https://api-docs.deepseek.com/zh-cn/api/list-models/) · [用量字段](https://api-docs.deepseek.com/zh-cn/api/create-message/)
 
-## 模型与用量
+设置首页、外观、字体大小和个性化使用 Android 原生控件。可以切换跟随系统、浅色或深色，调整四档字号，以及为每个账户设置回答风格与默认回答语言。聊天正文和本机管理页面由 APK 内置界面渲染。开放平台的身份验证、收款和官方密钥签发由应用内官方页面完成。
 
-在聊天输入区直接选择 Flash 或 Pro。首次打开时预选 Flash，已有会话各自保存模型选择。重新生成回答时使用当前选择，续写已有回答时沿用该回答的模型。Flash 支持本客户端的智能搜索、链接阅读和附件问答。Pro 可用于文本对话和深度思考。如果当前分支中已有附件或网页工具结果，界面会说明继续使用 Flash 的原因。[官方模型与能力说明](https://api-docs.deepseek.com/zh-cn/guides/anthropic_api/) · [DSH 会话模型选择](https://github.com/deepseek-ai/deepseek-harness/blob/master/packages/client/ui-model-selection/README.md)
+## 对话导入与导出
 
-在聊天末尾展开「对话用量」，可看整个会话，也可逐条查看回答。会话累计包含重新生成的各个分支及续写。输入总数包含缓存命中，输出总数包含思考 token。数值来自 DeepSeek 对话接口返回的用量记录。中断、缺少最终记录或从旧版导入的会话，页面会提示可统计的范围。充值及实际扣费以官方账户为准。[Messages API 用量字段](https://api-docs.deepseek.com/zh-cn/api/create-message/) · [DSH 聊天用量展示](https://github.com/deepseek-ai/deepseek-harness/blob/master/packages/client/ui-chat/README.md)
+在「设置 → 数据管理」导出当前账户的完整 ZIP，在单个对话的更多菜单中导出该对话。备份含项目、置顶状态及本机已有的附件原件，密钥与登录凭证留在本机。支持导入兼容的 DeepSeek ZIP 和旧版 TokenSeek 备份。
+
+默认选择「合并导入」会保留已有的同 ID 会话。「覆盖恢复」需明确选择，会替换当前本机账户的记录。其他账户的数据保持独立。对话历史保存在手机上。
+
+## 待办
+
+通过 DeepSeek 网页端账户直接聊天、无需开放平台 API Key 的模式已列入待办。0.6.0 的聊天仍使用开放平台 API。
 
 ## 构建安卓版
 
-需要 JDK 17、Android SDK Platform 35 与 Build Tools 35.0.0、Node.js 24、npm、Git 和 Bash。安装 Android SDK 后，设置 `ANDROID_HOME` 或在 `local.properties` 指定 `sdk.dir`。首次构建需要联网下载工具和依赖。
+需要 JDK 17、Android SDK Platform 35、Build Tools 35.0.0、Node.js 24、npm、Git 和 Bash。设置 `ANDROID_HOME` 或在 `local.properties` 指定 `sdk.dir`。首次构建需联网获取依赖与锁定版本的上游代码。
 
 ```bash
-./gradlew assembleDebug
+./gradlew assembleDebug testDebugUnitTest lintDebug
 ```
 
-使用 `./gradlew testDebugUnitTest` 可以检查登录后的任务恢复、密钥页操作和返回历史。调试安装包生成在 `app/build/outputs/apk/debug/app-debug.apk`，最低支持 Android 8.0，聊天页面需要较新的 Android System WebView。Gradle 会取出固定版本的上游代码、应用 TokenSeek 改动、执行 TypeScript 检查，然后将聊天页面和上游许可证一起打包。
+调试安装包生成在 `app/build/outputs/apk/debug/app-debug.apk`，最低支持 Android 8.0。聊天界面需要较新的 Android System WebView。Gradle 会应用 TokenSeek 的补丁，执行 TypeScript 检查，并将聊天资源和上游许可证一起打包。
 
-| 要修改的部分 | 源码入口 |
+| 部分 | 源码 |
 | --- | --- |
-| 钱包界面和余额请求 | `web/overlay/src/components/settings/Wallet.tsx`、`web/overlay/src/services/api/balance.ts` |
-| 账户、官方页面衔接和本机密钥管理 | `web/overlay/src/components/settings/AccountFlow.tsx`、`web/overlay/src/components/settings/AccountKey.tsx`、`app/src/main/java/io/tokenseek/app/OfficialPlatformActivity.java` |
-| 官方 Demo 的聊天入口、设置及密钥存储适配 | `web/patches/0001-tokenseek.patch` |
-| 设置页面、模型选择、会话用量界面 | `web/overlay/src/components/settings/SettingsPages.tsx`、`web/overlay/src/components/chatInput/ModelChoice.tsx`、`web/overlay/src/components/messages/ConversationUsage.tsx` |
-| Android 打开官方充值页、系统返回和本地加密存储 | `app/src/main/java/io/tokenseek/app/` |
-| 官方 Demo 版本与前端打包 | `tools/build-web.sh` |
+| 聊天页、侧栏、模型与用量 | `web/overlay/src/components/chatInput/`、`web/overlay/src/components/sider/`、`web/overlay/src/services/chat/` |
+| 本机账户、钱包与密钥 | `web/overlay/src/components/settings/`、`web/overlay/src/services/profiles.ts`、`app/src/main/java/io/tokenseek/app/KeyVault.java` |
+| Android 原生设置、官方页面和支付 | `app/src/main/java/io/tokenseek/app/NativeSettings.java`、`app/src/main/java/io/tokenseek/app/OfficialPlatformActivity.java`、`app/src/main/java/io/tokenseek/app/PaymentHandoff.java` |
+| 官方 Demo 版本、差异及打包 | `tools/build-web.sh`、`web/patches/` |

@@ -5,6 +5,7 @@ import android.app.Activity;
 import android.content.ActivityNotFoundException;
 import android.content.Context;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.content.res.Configuration;
 import android.graphics.Bitmap;
 import android.graphics.Insets;
@@ -30,7 +31,11 @@ import android.widget.Button;
 import android.widget.FrameLayout;
 import android.widget.ProgressBar;
 import android.widget.TextView;
+import android.widget.Toast;
 import android.window.OnBackInvokedDispatcher;
+
+import androidx.webkit.WebViewCompat;
+import androidx.webkit.WebViewFeature;
 
 import java.net.URI;
 import java.net.URISyntaxException;
@@ -44,7 +49,10 @@ import static io.tokenseek.app.PlatformNavigation.https;
 public final class OfficialPlatformActivity extends Activity {
     static final String EXTRA_ROUTE = "io.tokenseek.app.platform.ROUTE";
     static final String EXTRA_BIND = "io.tokenseek.app.platform.BIND";
+    static final String EXTRA_WORKSPACE = "io.tokenseek.app.platform.WORKSPACE";
     private static final String CONTINUATION_USED = "platform.continuationUsed";
+    private static final String SHARED_SESSION_USED = "shared-session-used";
+    private static final int PAYMENT_WINDOW = 2;
 
     private final List<WebView> windows = new ArrayList<>();
     private FrameLayout pages;
@@ -55,13 +63,24 @@ public final class OfficialPlatformActivity extends Activity {
     private Button bind;
     private String entryRoute;
     private String restartUrl;
+    private String workspaceId;
+    private CookieManager cookies;
     private PlatformNavigation navigation;
     private boolean keyboardVisible;
 
     static Intent createIntent(Context context, String address) {
+        return createIntent(context, address, "default");
+    }
+
+    static boolean isValidWorkspaceId(String id) {
+        return "default".equals(id) || (id != null && id.matches("[a-f0-9]{8}(-[a-f0-9]{4}){3}-[a-f0-9]{12}"));
+    }
+
+    static Intent createIntent(Context context, String address, String workspaceId) {
         Uri target = address == null ? null : Uri.parse(address);
         if (!isPlatformUrl(target)) throw new IllegalArgumentException("Expected a DeepSeek platform HTTPS URL");
-        return new Intent(context, OfficialPlatformActivity.class).setData(target);
+        if (!isValidWorkspaceId(workspaceId)) throw new IllegalArgumentException("Expected a local workspace ID");
+        return new Intent(context, OfficialPlatformActivity.class).setData(target).putExtra(EXTRA_WORKSPACE, workspaceId);
     }
 
     static boolean isPlatformUrl(Uri uri) {
@@ -71,7 +90,8 @@ public final class OfficialPlatformActivity extends Activity {
     @Override protected void onCreate(Bundle state) {
         super.onCreate(state);
         Uri initial = getIntent().getData();
-        if (!isPlatformUrl(initial)) {
+        workspaceId = getIntent().hasExtra(EXTRA_WORKSPACE) ? getIntent().getStringExtra(EXTRA_WORKSPACE) : "default";
+        if (!isPlatformUrl(initial) || !isValidWorkspaceId(workspaceId)) {
             finish();
             return;
         }
@@ -124,14 +144,31 @@ public final class OfficialPlatformActivity extends Activity {
         }
         String url = state == null ? initial.toString() : restartUrl;
         showPage(url);
-        createWindow().loadUrl(url);
+        WebView rootWindow = createWindow();
+        if (rootWindow != null) rootWindow.loadUrl(url);
     }
 
     @SuppressLint("SetJavaScriptEnabled")
     private WebView createWindow() {
         WebView previous = visibleWindow();
-        if (previous != null) previous.setVisibility(View.GONE);
         WebView view = new WebView(this);
+        if (!"default".equals(workspaceId) && WebViewFeature.isFeatureSupported(WebViewFeature.MULTI_PROFILE)) {
+            try {
+                // Set the profile before accessing settings, cookies, or navigating any window.
+                WebViewCompat.setProfile(view, "tokenseek-" + workspaceId);
+                cookies = WebViewCompat.getProfile(view).getCookieManager();
+            } catch (IllegalStateException | UnsupportedOperationException unavailable) {
+                view.destroy();
+                Toast.makeText(this, R.string.platform_profile_unavailable, Toast.LENGTH_LONG).show();
+                finish();
+                return null;
+            }
+        } else {
+            // Keeping the default profile preserves the original account's official session on upgrade.
+            cookies = CookieManager.getInstance();
+            if (previous == null) showSharedSessionIfNeeded();
+        }
+        if (previous != null) previous.setVisibility(View.GONE);
         WebSettings settings = view.getSettings();
         settings.setJavaScriptEnabled(true);
         settings.setDomStorageEnabled(true);
@@ -147,13 +184,23 @@ public final class OfficialPlatformActivity extends Activity {
         settings.setSafeBrowsingEnabled(true);
         settings.setSupportMultipleWindows(true);
         settings.setJavaScriptCanOpenWindowsAutomatically(false);
-        CookieManager.getInstance().setAcceptThirdPartyCookies(view, true);
+        cookies.setAcceptThirdPartyCookies(view, true);
         view.setWebViewClient(new SiteClient());
         view.setWebChromeClient(new SiteChrome());
         windows.add(view);
         pages.addView(view, new FrameLayout.LayoutParams(-1, -1));
         view.requestFocus();
         return view;
+    }
+
+    private void showSharedSessionIfNeeded() {
+        SharedPreferences history = getSharedPreferences("official-sessions", MODE_PRIVATE);
+        boolean original = "default".equals(workspaceId);
+        if (original && !history.getBoolean(SHARED_SESSION_USED, false)) return;
+        if (!original) history.edit().putBoolean(SHARED_SESSION_USED, true).apply();
+        TextView warning = findViewById(R.id.platform_session_warning);
+        warning.setText(original ? R.string.platform_previous_shared_session : R.string.platform_shared_session);
+        warning.setVisibility(View.VISIBLE);
     }
 
     private WebView visibleWindow() {
@@ -179,11 +226,15 @@ public final class OfficialPlatformActivity extends Activity {
     }
 
     private void restartEntry() {
+        openOfficialEntry(restartUrl);
+    }
+
+    private void openOfficialEntry(String url) {
         while (windows.size() > 1) removeWindow(visibleWindow());
         hideNotice();
         WebView root = visibleWindow();
         root.setVisibility(View.VISIBLE);
-        root.loadUrl(restartUrl);
+        root.loadUrl(url);
     }
 
     private void showPage(String url) {
@@ -251,6 +302,7 @@ public final class OfficialPlatformActivity extends Activity {
         private long revision;
         private int lastHistoryIndex = -1;
         private final PlatformNavigation.Document document = new PlatformNavigation.Document();
+        private PaymentHandoff.Provider unavailableWallet;
 
         @Override public WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest request) {
             if (request.isForMainFrame()) {
@@ -293,18 +345,20 @@ public final class OfficialPlatformActivity extends Activity {
 
         @Override public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
             Uri target = request.getUrl();
+            if (request.isForMainFrame() && view == visibleWindow() && "GET".equals(request.getMethod())
+                    && offerPaymentApp(view, target)) return true;
             if (https(target.toString()) != null) return false;
             if ("about:blank".equals(target.toString())) {
                 return request.isForMainFrame() && windows.indexOf(view) <= 0;
             }
-            if (!request.isForMainFrame()) return true;
-            if (view == visibleWindow() && !offerPaymentApp(view, target)) {
+            if (request.isForMainFrame() && view == visibleWindow()) {
                 showNotice(getString(R.string.platform_unsupported), "", null);
             }
             return true;
         }
 
         @Override public void onPageStarted(WebView view, String url, Bitmap favicon) {
+            if (isPlatformUrl(Uri.parse(url))) unavailableWallet = null;
             document.start(url);
             invalidate();
             finished = false;
@@ -320,9 +374,11 @@ public final class OfficialPlatformActivity extends Activity {
             showPage(view.getUrl());
             URI location = https(url);
             if (location != null && "accounts.google.com".equalsIgnoreCase(location.getHost())) {
-                showNotice(getString(R.string.platform_google), getString(R.string.platform_browser),
-                        () -> launch(new Intent(Intent.ACTION_VIEW, Uri.parse(restartUrl))
-                                .addCategory(Intent.CATEGORY_BROWSABLE)));
+                offerLoginBrowser();
+            } else if (PaymentHandoff.isWechatH5(url) && notice.getVisibility() != View.VISIBLE) {
+                // WeChat documents H5 as a mobile-browser product. Open a fresh merchant page
+                // on explicit request so the browser can supply its own login session and Referer.
+                offerPaymentBrowser();
             }
         }
 
@@ -361,7 +417,15 @@ public final class OfficialPlatformActivity extends Activity {
         }
 
         @Override public void onReceivedHttpError(WebView view, WebResourceRequest request, WebResourceResponse response) {
-            if (request.isForMainFrame()) markFailed(view, R.string.platform_load_failed);
+            if (!request.isForMainFrame()) return;
+            markFailed(view, R.string.platform_load_failed);
+            if (view != visibleWindow()) return;
+            String address = request.getUrl().toString();
+            if (PaymentHandoff.isWechatH5(address) || PaymentHandoff.isAlipayCashier(address)) {
+                offerPaymentBrowser();
+            } else if ("accounts.google.com".equalsIgnoreCase(request.getUrl().getHost())) {
+                offerLoginBrowser();
+            }
         }
 
         @Override public void onReceivedSslError(WebView view, SslErrorHandler handler, SslError error) {
@@ -381,6 +445,7 @@ public final class OfficialPlatformActivity extends Activity {
             // and window.close() retain their normal browser semantics.
             hideNotice();
             WebView popup = createWindow();
+            if (popup == null) return false;
             showPage(null);
             ((WebView.WebViewTransport) result.obj).setWebView(popup);
             result.sendToTarget();
@@ -400,48 +465,87 @@ public final class OfficialPlatformActivity extends Activity {
     }
 
     private boolean offerPaymentApp(WebView view, Uri requested) {
-        URI source = https(view.getUrl());
-        if (source == null && windows.indexOf(view) > 0) {
-            source = https(windows.get(windows.indexOf(view) - 1).getUrl());
-        }
-        if (source == null) return false;
-        String host = source.getHost().toLowerCase(Locale.ROOT);
-        Uri target = requested;
-        String designatedPackage = null;
+        String source = view.getUrl();
+        int index = windows.indexOf(view);
+        if ((source == null || "about:blank".equals(source)) && index > 0) source = windows.get(index - 1).getUrl();
+        String data = requested.toString();
+        String declaredPackage = null;
+        String fallback = null;
         if ("intent".equalsIgnoreCase(requested.getScheme())) {
             try {
-                Intent parsed = Intent.parseUri(requested.toString(), Intent.URI_INTENT_SCHEME);
-                target = parsed.getData();
-                designatedPackage = parsed.getPackage();
+                Intent parsed = Intent.parseUri(data, Intent.URI_INTENT_SCHEME);
+                data = parsed.getDataString();
+                declaredPackage = parsed.getPackage();
+                fallback = parsed.getStringExtra("browser_fallback_url");
             } catch (URISyntaxException malformed) {
                 return false;
             }
         }
-        if (target == null || target.getUserInfo() != null || target.getPort() != -1) return false;
-        String providerPackage;
-        int name;
-        if ("alipays".equalsIgnoreCase(target.getScheme()) && "platformapi".equalsIgnoreCase(target.getHost())
-                && "/startapp".equalsIgnoreCase(target.getPath())
-                && (within(host, "alipay.com") || within(host, "deepseek.com"))) {
-            providerPackage = "com.eg.android.AlipayGphone";
-            name = R.string.platform_alipay;
-        } else if ("weixin".equalsIgnoreCase(target.getScheme()) && "wap".equalsIgnoreCase(target.getHost())
-                && "/pay".equals(target.getPath())
-                && (within(host, "tenpay.com") || within(host, "weixin.qq.com") || within(host, "deepseek.com"))) {
-            providerPackage = "com.tencent.mm";
-            name = R.string.platform_wechat;
-        } else {
+        PaymentHandoff handoff = PaymentHandoff.from(source, data, declaredPackage, fallback);
+        if (handoff == null) return false;
+        SiteClient client = (SiteClient) view.getWebViewClient();
+        if (client.unavailableWallet == handoff.provider) {
+            // A cashier can issue its app link again after opening a web fallback. Keep HTTPS
+            // navigation intact and never present the same unavailable wallet in a loop.
+            if (https(requested.toString()) != null) return false;
+            offerPaymentBrowser();
+            return true;
+        }
+        String name = getString(handoff.provider == PaymentHandoff.Provider.ALIPAY
+                ? R.string.platform_alipay : R.string.platform_wechat);
+        showNotice(getString(R.string.platform_payment_app, name), getString(R.string.platform_open_payment, name), () -> {
+            // Fresh, package-pinned intent. No component, selector, flags, or other web-supplied
+            // extras are relayed to the external app.
+            Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(handoff.appUrl))
+                    .setPackage(handoff.provider.packageName).addCategory(Intent.CATEGORY_BROWSABLE);
+            if (!startPaymentWindow(intent)) {
+                client.unavailableWallet = handoff.provider;
+                // WeChat's H5 entry must be reached from its registered merchant and can be
+                // short lived. A native loadUrl cannot reproduce that browser navigation.
+                if (handoff.fallback == null || PaymentHandoff.isWechatH5(handoff.fallback)) {
+                    offerPaymentBrowser();
+                } else {
+                    showNotice(getString(R.string.platform_wallet_missing, name),
+                            getString(R.string.platform_web_cashier), () -> view.loadUrl(handoff.fallback));
+                }
+            }
+        });
+        return true;
+    }
+
+    private void offerLoginBrowser() {
+        showNotice(getString(R.string.platform_google), getString(R.string.platform_browser),
+                () -> launch(new Intent(Intent.ACTION_VIEW, Uri.parse(restartUrl))
+                        .addCategory(Intent.CATEGORY_BROWSABLE)));
+    }
+
+    private void offerPaymentBrowser() {
+        showNotice(getString(R.string.platform_cashier_browser), getString(R.string.platform_browser),
+                () -> {
+                    Intent merchant = new Intent(Intent.ACTION_VIEW, Uri.parse(PaymentHandoff.MERCHANT))
+                            .addCategory(Intent.CATEGORY_BROWSABLE);
+                    if (!startPaymentWindow(merchant)) {
+                        showNotice(getString(R.string.platform_no_handler), "", null);
+                    }
+                });
+    }
+
+    private boolean startPaymentWindow(Intent intent) {
+        try {
+            startActivityForResult(intent, PAYMENT_WINDOW);
+            return true;
+        } catch (ActivityNotFoundException | SecurityException unavailable) {
             return false;
         }
-        if (designatedPackage != null && !providerPackage.equals(designatedPackage)) return false;
-        // Reconstruct a browsable, package-pinned VIEW intent. Never relay supplied extras,
-        // components, selectors, flags, or fallback URLs from a web page.
-        Intent open = new Intent(Intent.ACTION_VIEW, target).setPackage(providerPackage)
-                .addCategory(Intent.CATEGORY_BROWSABLE);
-        String provider = getString(name);
-        showNotice(getString(R.string.platform_payment_app, provider),
-                getString(R.string.platform_open_payment, provider), () -> launch(open));
-        return true;
+    }
+
+    @Override protected void onActivityResult(int request, int result, Intent data) {
+        super.onActivityResult(request, result, data);
+        if (request == PAYMENT_WINDOW && !isFinishing()) {
+            // A wallet can return for success, cancellation or failure. DeepSeek owns the order.
+            showNotice(getString(R.string.platform_payment_return), getString(R.string.platform_check_topup),
+                    () -> openOfficialEntry(PaymentHandoff.MERCHANT));
+        }
     }
 
     private void launch(Intent intent) {
@@ -483,7 +587,8 @@ public final class OfficialPlatformActivity extends Activity {
     }
 
     private void returnToChat(boolean bindKey) {
-        setResult(RESULT_OK, new Intent().putExtra(EXTRA_ROUTE, entryRoute).putExtra(EXTRA_BIND, bindKey));
+        setResult(RESULT_OK, new Intent().putExtra(EXTRA_ROUTE, entryRoute).putExtra(EXTRA_BIND, bindKey)
+                .putExtra(EXTRA_WORKSPACE, workspaceId));
         finish();
     }
 
@@ -500,7 +605,7 @@ public final class OfficialPlatformActivity extends Activity {
 
     @Override protected void onPause() {
         for (WebView view : windows) view.onPause();
-        if (!windows.isEmpty()) CookieManager.getInstance().flush();
+        if (cookies != null) cookies.flush();
         super.onPause();
     }
 

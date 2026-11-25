@@ -39,3 +39,21 @@
   overflow: hidden;
   background: var(--dsw-alias-bg-base);
 }
+
+.otherHeading {
+  margin: 24px 4px 8px; font: inherit; font-size: 14px; color: var(--dsw-alias-label-secondary);
+}
+.otherGroup {
+  background: var(--dsw-alias-bg-base); border-radius: 14px; margin-bottom: 8px;
+  overflow: hidden;
+}
+.otherGroup > button {
+  border: none; padding: 11px 16px; width: 100%; min-height: 48px; display: flex; gap: 10px;
+  align-items: center; justify-content: space-between; text-align: start; font: inherit;
+  overflow-wrap: anywhere; color: inherit; background: transparent; cursor: pointer;
+}
+.otherGroup small { display: block; color: var(--dsw-alias-label-secondary); font-size: 13px; }
+.otherList { padding: 0 16px 14px; }
+.otherList ul { padding: 0; margin: 0 0 10px; list-style: none; }
+.otherList li { padding: 8px 0; border-top: 1px solid var(--dsw-alias-border-l1); overflow-wrap: anywhere; }
+.otherList strong { font-weight: 500; }

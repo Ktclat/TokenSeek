@@ -1,0 +1,56 @@
+diff --git a/src/components/chatInput/ChatInput.tsx b/src/components/chatInput/ChatInput.tsx
+index cf64bd5..8ae0fa9 100644
+--- a/src/components/chatInput/ChatInput.tsx
++++ b/src/components/chatInput/ChatInput.tsx
+@@ -39,6 +39,8 @@ import { Spectrum } from './Spectrum.js'
+ import { getVisibleMessages } from '../../services/chat/branches.js'
+ import { FLASH, PRO, requiresFlashContext } from '../../services/chat/models.js'
+ import { ModelChoice } from './ModelChoice.js'
++import { ContextMeter } from './ContextMeter.js'
++import contextStyles from './ContextMeter.module.css'
+ import { useTranslate } from '../../i18n/index.js'
+ import styles from './ChatInput.module.css'
+ 
+@@ -189,12 +191,16 @@ const Input = ({ sessionId }: { sessionId: string | null }) => {
+         }
+       }}
+     >
+-      <ModelChoice
+-        model={model}
+-        needsFlash={needsFlash}
+-        disabled={streaming || importingHistory}
+-        onChange={(next) => setConversationModel(sessionId, next)}
+-      />
++      <div className={contextStyles.toolbar}>
++        <ModelChoice
++          model={model}
++          needsFlash={needsFlash}
++          disabled={streaming || importingHistory}
++          onChange={(next) => setConversationModel(sessionId, next)}
++        />
++        <ContextMeter sessionId={sessionId} model={model} text={text}
++          hasAttachment={attachments.length > 0} streaming={streaming} />
++      </div>
+       <DraftAttachments items={attachments} onRetry={retryFile} onRemove={removeFile} />
+       <div className={styles.textareaWrapper}>
+         <textarea
+diff --git a/src/components/messages/MessageList.tsx b/src/components/messages/MessageList.tsx
+index 3708f76..6b8c0e9 100644
+--- a/src/components/messages/MessageList.tsx
++++ b/src/components/messages/MessageList.tsx
+@@ -9,7 +9,6 @@ import { selectMessageVersion } from '../../services/chat/store.js'
+ import type { Session } from '../../services/chat/types.js'
+ import { closeSearchPanel } from '../search/searchPanelState.js'
+ import { AssistantMessage } from './AssistantMessage.js'
+-import { ConversationUsage } from './ConversationUsage.js'
+ import { ScrollToBottomContext } from './scrollContext.js'
+ import { UserMessage } from './UserMessage.js'
+ import type { Message } from '../../services/chat/types.js'
+@@ -173,7 +172,6 @@ export const MessageList = ({
+                 />
+               )
+             )}
+-            <ConversationUsage key={session.id} messages={session.messages} visible={messages} />
+           </div>
+         </div>
+         {footer}

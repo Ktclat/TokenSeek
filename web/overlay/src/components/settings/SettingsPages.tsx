@@ -2,15 +2,17 @@ import { useEffect, useLayoutEffect, useRef, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { useTranslate } from '../../i18n/index.js'
 import { regionCodes, getRegionName, provinces } from '../../services/location.js'
-import { isChineseBrowser, setLocale, setLocation, setThemePreference, setTtsVoice, useSettings } from '../../services/settings.js'
-import { IconChevronRightOutline14, IconDataOutline16, IconLinkOutline16, IconSettingsOutline16 } from '../base/icons.js'
+import { isChineseBrowser, setLocale, setLocation, setTtsVoice, useSettings } from '../../services/settings.js'
+import { IconChevronRightOutline14 } from '../base/icons.js'
 import { useIsMobile, useMobileViewport } from '../../app/viewport.js'
 import { usePlatformLabels } from './OfficialPlatform.js'
-import { AccountFlow, AccountIcon, useAccountText } from './AccountFlow.js'
+import { AccountFlow, useAccountText } from './AccountFlow.js'
 import { Button } from '../base/Button.js'
-import { Wallet, WalletIcon } from './Wallet.js'
+import { Wallet } from './Wallet.js'
+import { ProfileSettings, useProfileText } from './ProfileSettings.js'
 import { AccountKey } from './AccountKey.js'
 import { backSettings, closeSettings, pushSettings, type SettingsSection } from './settingsDialogState.js'
+import { PreferencePanels, usePreferenceLabels } from './PreferencePanels.js'
 import { SettingsRow, Options } from './SettingsRows.js'
 import { usePageText } from './SettingsPageText.js'
 import styles from './SettingsPages.module.css'
@@ -21,24 +23,22 @@ export const SettingsPages = ({ page, backDisabled, children }: {
   const t = useTranslate()
   const copy = usePageText()
   const account = useAccountText()
+  const profileText = useProfileText()
   const labels = usePlatformLabels()
+  const prefs = usePreferenceLabels()
   const titleRef = useRef<HTMLHeadingElement>(null)
   const frameRef = useMobileViewport(useIsMobile())
-  const { apiKey, locale, ttsVoice, themePreference, location } = useSettings()
+  const { apiKey, locale, ttsVoice, location } = useSettings()
   const province = provinces.find(item => item.code === location?.province)
   const city = province?.cities.find(item => item.code === location?.city)
   const localProvince = isChineseBrowser()
   const titles: Record<SettingsSection, string> = {
+    profiles: profileText.profiles,
     home: t('settings'), account: account.title, wallet: t('wallet'), keys: labels.keys, general: t('settingDialogAsideGeneralOptionLabel'),
-    data: t('settingDialogAsideDataOptionLabel'), theme: t('avatarMenuSettingsDialogThemeItemLabel'),
+    data: t('settingDialogAsideDataOptionLabel'), theme: prefs.theme, font: prefs.font, personalization: prefs.personalization,
     language: t('settingsLocalePreference'), voice: t('settingsTtsVoice'),
     location: t('settingsLocation'), cities: t('settingsLocationCity'),
   }
-  const themes = [
-    { value: 'system', label: t('avatarMenuSettingsDialogThemeSelectSystemOption') },
-    { value: 'light', label: t('avatarMenuSettingsDialogThemeSelectLightOption') },
-    { value: 'dark', label: t('avatarMenuSettingsDialogThemeSelectDarkOption') },
-  ] as const
   const languages = [
     { value: 'zh-CN', label: t('settingsLocaleZhCN') }, { value: 'en-US', label: t('settingsLocaleEnUS') },
   ] as const
@@ -84,19 +84,12 @@ export const SettingsPages = ({ page, backDisabled, children }: {
   const renderPage = () => {
     switch (page) {
       case 'home':
-        return <>
-          <h2 className={styles.sectionLabel}>{copy.account}</h2>
-          <div className={styles.group}>
-            <SettingsRow label={account.title} icon={<AccountIcon />} onClick={() => pushSettings('account')} />
-            <SettingsRow label={t('wallet')} icon={<WalletIcon />} onClick={() => pushSettings('wallet')} />
-            <SettingsRow label={labels.keys} icon={<IconLinkOutline16 />} onClick={() => pushSettings('keys')} />
-          </div>
-          <h2 className={styles.sectionLabel}>{copy.application}</h2>
-          <div className={styles.group}>
-            <SettingsRow label={titles.general} icon={<IconSettingsOutline16 />} onClick={() => pushSettings('general')} />
-            <SettingsRow label={titles.data} icon={<IconDataOutline16 />} onClick={() => pushSettings('data')} />
-          </div>
-        </>
+      case 'theme':
+      case 'font':
+      case 'personalization':
+        return <PreferencePanels page={page} />
+      case 'profiles':
+        return <ProfileSettings />
       case 'account':
         return <AccountFlow apiKey={apiKey} />
       case 'wallet':
@@ -110,18 +103,12 @@ export const SettingsPages = ({ page, backDisabled, children }: {
         return children
       case 'general':
         return <div className={styles.group}>
-          <SettingsRow label={titles.theme} value={themes.find(item => item.value === themePreference)?.label} onClick={() => pushSettings('theme')} />
           <SettingsRow label={titles.language} value={languages.find(item => item.value === locale)?.label} onClick={() => pushSettings('language')} />
           <SettingsRow label={titles.voice} value={voices.find(item => item.value === ttsVoice)?.label} onClick={() => pushSettings('voice')} />
           <SettingsRow label={titles.location}
             value={city?.name ?? province?.name ?? (location ? getRegionName(location.region, locale) : copy.unset)}
             onClick={() => pushSettings('location')} />
         </div>
-      case 'theme':
-        return <Options title={titles.theme} options={themes} selected={themePreference} onChange={value => {
-          setThemePreference(value)
-          backSettings()
-        }} />
       case 'language':
         return <Options title={titles.language} options={languages} selected={locale} onChange={value => {
           setLocale(value)

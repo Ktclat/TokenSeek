@@ -1,7 +1,5 @@
-import { useEffect, useState } from 'react'
 import { useTranslate, type TranslationKey } from '../../i18n/index.js'
-import { getBalance } from '../../services/api/balance.js'
-import { classifyApiError } from '../../services/api/errors.js'
+import { useBalance, type WalletState } from '../../services/walletBalance.js'
 import { platformUrls, usePlatformLabels } from './OfficialPlatform.js'
 import { Button } from '../base/Button.js'
 import { closeSettings, pushSettings } from './settingsDialogState.js'
@@ -14,60 +12,6 @@ export const WalletIcon = () => (
     <path d="M20 11h-4a2 2 0 0 0 0 4h4"/>
   </svg>
 )
-
-type WalletState =
-  | { status: 'unbound' | 'loading' | 'invalid' | 'error' }
-  | { status: 'ready'; balance: Awaited<ReturnType<typeof getBalance>> }
-
-function useBalance(apiKey: string | null) {
-  const [version, setVersion] = useState(0)
-  const [state, setState] = useState<WalletState>({ status: apiKey ? 'loading' : 'unbound' })
-  const refresh = () => setVersion(count => count + 1)
-
-  useEffect(() => {
-    if (!apiKey) return
-    let timer: ReturnType<typeof setTimeout>
-    const onReturn = () => {
-      if (document.visibilityState !== 'visible') return
-      clearTimeout(timer)
-      timer = setTimeout(refresh, 100)
-    }
-    window.addEventListener('focus', onReturn)
-    window.addEventListener('pageshow', onReturn)
-    window.addEventListener('tokenseek:resume', onReturn)
-    document.addEventListener('visibilitychange', onReturn)
-    return () => {
-      clearTimeout(timer)
-      window.removeEventListener('focus', onReturn)
-      window.removeEventListener('pageshow', onReturn)
-      window.removeEventListener('tokenseek:resume', onReturn)
-      document.removeEventListener('visibilitychange', onReturn)
-    }
-  }, [apiKey])
-
-  useEffect(() => {
-    if (!apiKey) return
-    const controller = new AbortController()
-    let active = true
-    setState({ status: 'loading' })
-    const timeout = setTimeout(() => controller.abort(), 15000)
-    getBalance(apiKey, controller.signal)
-      .then(balance => {
-        if (active) setState({ status: 'ready', balance })
-      })
-      .catch((error: unknown) => {
-        if (active) setState({ status: classifyApiError(error) === 'unauthorized' ? 'invalid' : 'error' })
-      })
-      .finally(() => clearTimeout(timeout))
-    return () => {
-      active = false
-      clearTimeout(timeout)
-      controller.abort()
-    }
-  }, [apiKey, version])
-
-  return { state, refresh }
-}
 
 const walletMessage = (state: WalletState): TranslationKey | null => {
   if (state.status === 'unbound') return 'walletUnbound'

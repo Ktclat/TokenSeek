@@ -14,7 +14,10 @@
     <string name="platform_dismiss">Dismiss</string>
     <string name="platform_load_failed">This page could not load. You can reopen the current platform section.</string>
     <string name="platform_ssl_failed">The secure connection could not be verified. Check your network and try again.</string>
-    <string name="platform_google">Use your browser for Google sign-in, or go back to choose another sign-in method.</string>
+    <string name="platform_google">Continue with Google in your browser, or go back to choose another sign-in method. Check which account is signed in to the browser.</string>
+    <string name="platform_shared_session">This WebView shares the official sign-in across profiles. Check your DeepSeek account and switch on the site if needed.</string>
+    <string name="platform_previous_shared_session">Another local profile previously shared this sign-in. Check your DeepSeek account.</string>
+    <string name="platform_profile_unavailable">Could not open this profile’s official session. Update Android System WebView and try again.</string>
     <string name="platform_browser">Continue in browser</string>
     <string name="platform_payment_app">This payment page wants to open %1$s.</string>
     <string name="platform_open_payment">Open %1$s</string>
@@ -22,4 +25,9 @@
     <string name="platform_wechat">WeChat</string>
     <string name="platform_no_handler">No app is available to open this link. Go back to choose another option.</string>
     <string name="platform_unsupported">This link cannot open in this window. Go back to choose another option.</string>
+    <string name="platform_wallet_missing">This device could not open %1$s. You can continue in the official web checkout.</string>
+    <string name="platform_web_cashier">Continue in web checkout</string>
+    <string name="platform_cashier_browser">If checkout is unavailable here, open the DeepSeek top-up page in your browser. Check which account is signed in there before paying.</string>
+    <string name="platform_payment_return">Check the DeepSeek platform to see whether your top-up was credited.</string>
+    <string name="platform_check_topup">View official top-up page</string>
 </resources>

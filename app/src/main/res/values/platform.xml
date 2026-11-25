@@ -27,7 +27,10 @@
     <string name="platform_dismiss">收起</string>
     <string name="platform_load_failed">页面未能加载。可以重新打开当前平台入口。</string>
     <string name="platform_ssl_failed">无法验证此网站的安全连接。请检查网络后再试。</string>
-    <string name="platform_google">Google 登录可在浏览器继续。也可以返回官方登录页，选择其他登录方式。</string>
+    <string name="platform_google">可以在浏览器继续 Google 登录，或返回选择其他方式。浏览器使用自己的登录状态，请核对官方账号。</string>
+    <string name="platform_shared_session">当前 WebView 共用官网登录。请核对账号，需要时在官网切换。</string>
+    <string name="platform_previous_shared_session">其他本机档案曾共用此官网登录。请核对当前官方账号。</string>
+    <string name="platform_profile_unavailable">未能打开此档案的官方会话。请更新 Android System WebView 后重试。</string>
     <string name="platform_browser">在浏览器继续</string>
     <string name="platform_payment_app">此支付页面请求打开%1$s。</string>
     <string name="platform_open_payment">打开%1$s</string>
@@ -35,4 +38,9 @@
     <string name="platform_wechat">微信</string>
     <string name="platform_no_handler">未找到可打开此链接的应用。请返回官方页面选择其他方式。</string>
     <string name="platform_unsupported">此链接无法在此窗口打开。可以返回官方页面选择其他方式。</string>
+    <string name="platform_wallet_missing">此设备未能打开%1$s。可以继续使用官方收银台。</string>
+    <string name="platform_web_cashier">继续网页支付</string>
+    <string name="platform_cashier_browser">如无法在此付款，可在浏览器打开 DeepSeek 官方充值页。请核对浏览器中的账号后再付款。</string>
+    <string name="platform_payment_return">请在 DeepSeek 官方平台核对本次充值是否到账。</string>
+    <string name="platform_check_topup">查看官方充值页</string>
 </resources>
