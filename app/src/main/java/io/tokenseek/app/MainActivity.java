@@ -1,552 +1,1200 @@
 package io.tokenseek.app;
 
-import android.Manifest;
-import android.annotation.SuppressLint;
+import static io.tokenseek.app.NativeAccountStore.object;
+import static io.tokenseek.app.NativeThread.put;
+
 import android.app.Activity;
+import android.app.AlertDialog;
 import android.content.ActivityNotFoundException;
-import android.content.ClipData;
 import android.content.Intent;
-import android.content.pm.PackageManager;
 import android.content.res.Configuration;
-import android.graphics.Color;
-import android.graphics.Insets;
-import android.graphics.Rect;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
+import android.speech.RecognizerIntent;
+import android.speech.tts.TextToSpeech;
+import android.text.InputFilter;
 import android.view.View;
+import android.view.ViewGroup;
 import android.view.WindowInsets;
-import android.webkit.JavascriptInterface;
-import android.webkit.PermissionRequest;
-import android.webkit.ValueCallback;
-import android.webkit.WebChromeClient;
-import android.webkit.WebSettings;
-import android.webkit.WebView;
+import android.widget.EditText;
 import android.widget.FrameLayout;
 import android.widget.Toast;
-import android.window.OnBackInvokedDispatcher;
 
+import org.json.JSONArray;
+import org.json.JSONException;
 import org.json.JSONObject;
 
+import java.io.InputStream;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.List;
-import java.util.UUID;
+import java.util.Locale;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 public final class MainActivity extends Activity {
-    private static final int PICK_FILES = 40;
-    private static final int REQUEST_MICROPHONE = 42;
-    private static final int OPEN_PLATFORM = 43;
-    private boolean platformOpen;
-    private String platformParentHash;
-    private String currentWorkspace;
-    private String platformOwner;
-    private boolean localPageReady;
-    private String pendingPlatformPage;
-    // The capability is inserted into a same-origin script only for the lifetime of this WebView.
-    private final String capability = UUID.randomUUID().toString();
-    private WebView web;
-    private NativeSettings nativeSettings;
-    private NativeFunding nativeFunding;
-    private NativeChatKeys nativeChatKeys;
-    private int systemTextZoom;
-    private boolean drawerGestureEnabled;
-    private FrameLayout container;
-    private Boolean pageDark;
+    private static final int PICK_PHOTO = 510, PICK_FILE = 511, VOICE = 512, PICK_USAGE = 513;
+    private final ArrayDeque<String> trail = new ArrayDeque<>();
+    private final ArrayDeque<Bundle> settingsTrail = new ArrayDeque<>();
+    private final ExecutorService io = Executors.newSingleThreadExecutor();
+    private final Handler main = new Handler(Looper.getMainLooper());
+    private FrameLayout root;
+    private NativeAccountStore accounts;
     private KeyVault vault;
-    private DocumentExport export;
-    private PermissionRequest audioRequest;
-    private ValueCallback<Uri[]> filesCallback;
+    private NativeAccountPages settings;
+    private NativeHistoryStore store;
+    private NativeChatClient client;
+    private NativeThread thread;
+    private NativeConversation chat;
+    private NativeWalletController wallet;
+    private NativeDataPage data;
+    private NativeUsagePage usage;
+    private NativePlatformUsagePage platformUsage;
+    private NativeChatClient.Call upload;
+    private TextToSpeech speech;
+    private String page = "chat",
+            owner = "",
+            key = "",
+            pickerOwner = "",
+            pickerThread = "";
+    private JSONArray sections = new JSONArray();
+    private JSONObject organization = new JSONObject();
+    private String listStamp = "";
+    private long usageRevision;
+    private boolean refreshOnReturn, preparingAttachment;
+    private AlertDialog importProgress;
+    private final NativeHistoryTransfers.Observer transfers =
+            new NativeHistoryTransfers.Observer() {
+                @Override
+                public boolean allowsImport(NativeHistoryTransfers.Job job) {
+                    return !job.affects(owner)
+                            || thread == null
+                            || (!thread.generating() && !preparingAttachment);
+                }
 
-    @SuppressLint("SetJavaScriptEnabled")
-    @Override public void onCreate(Bundle state) {
+                @Override
+                public void changed(NativeHistoryTransfers.Job job) {
+                    transferChanged(job);
+                }
+            };
+    private int attachmentRevision;
+
+    @Override
+    public void onCreate(Bundle state) {
         super.onCreate(state);
+        accounts = new NativeAccountStore(this);
         vault = new KeyVault(this);
-        export = new DocumentExport(this);
-        container = new FrameLayout(this);
-        web = new WebView(this);
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            web.addOnLayoutChangeListener((v, l, t, r, b, ol, ot, or, ob) -> {
-                if (r - l != or - ol || b - t != ob - ot) updateDrawerEdge();
-            });
-        }
-        container.addView(web, new FrameLayout.LayoutParams(-1, -1));
-        setContentView(container);
-        applySystemBars();
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            getWindow().setDecorFitsSystemWindows(false);
-            container.setOnApplyWindowInsetsListener((v, windowInsets) -> {
-                Insets insets = windowInsets.getInsets(WindowInsets.Type.systemBars()
-                        | WindowInsets.Type.displayCutout() | WindowInsets.Type.ime());
-                v.setPadding(insets.left, insets.top, insets.right, insets.bottom);
-                return WindowInsets.CONSUMED;
-            });
-            container.requestApplyInsets();
-        }
-        WebSettings settings = web.getSettings();
-        systemTextZoom = settings.getTextZoom();
-        settings.setJavaScriptEnabled(true);
-        settings.setDomStorageEnabled(true);
-        settings.setAllowFileAccess(false);
-        settings.setAllowContentAccess(false);
-        settings.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
-        settings.setGeolocationEnabled(false);
-        // This WebView only hosts the bundled chat. Official pages use their own activity.
-        settings.setSupportMultipleWindows(false);
-        settings.setJavaScriptCanOpenWindowsAutomatically(false);
-        web.setWebViewClient(new LocalSite(this, capability));
-        web.setWebChromeClient(new Chrome());
-        web.addJavascriptInterface(new Bridge(), "TokenSeekHost");
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            getOnBackInvokedDispatcher().registerOnBackInvokedCallback(
-                    OnBackInvokedDispatcher.PRIORITY_DEFAULT, this::handleBack);
-        }
-        if (state != null) {
-            platformOpen = state.getBoolean("platformOpen");
-            platformOwner = state.getString("platformOwner", "default");
-            platformParentHash = state.containsKey("platformParentHash")
-                    ? state.getString("platformParentHash") : "#return-official-account";
-            // The old chat WebView is gone after process recreation. Restore its screen only
-            // when the official activity returns, unless the user explicitly selects binding.
-            pendingPlatformPage = platformOpen ? platformParentHash : state.getString("pendingPlatformPage");
-        }
-        web.loadUrl(LocalSite.INDEX);
-    }
+        client = new NativeChatClient(this);
+        root = new FrameLayout(this);
+        setContentView(root);
+        if (Build.VERSION.SDK_INT >= 35)
+            root.setOnApplyWindowInsetsListener(
+                    (view, insets) -> {
+                        android.graphics.Insets pad =
+                                insets.getInsets(
+                                        WindowInsets.Type.systemBars()
+                                                | WindowInsets.Type.displayCutout()
+                                                | WindowInsets.Type.ime());
+                        view.setPadding(pad.left, pad.top, pad.right, pad.bottom);
+                        return WindowInsets.CONSUMED;
+                    });
+        chat = new NativeConversation(this, this::action);
+        wallet =
+                new NativeWalletController(
+                        this,
+                        this::walletAction,
+                        () -> {
+                            if (settings != null) settings.setBalance(owner, wallet.balanceLabel());
+                            renderChat();
+                        });
+        settings =
+                new NativeAccountPages(
+                        this,
+                        vault,
+                        new NativeAccountPages.Host() {
+                            public void open(String destination) {
+                                if ("chat".equals(destination)) home();
+                                else if ("back".equals(destination)) popPage();
+                                else go(destination);
+                            }
 
-    @Override protected void onSaveInstanceState(Bundle state) {
-        super.onSaveInstanceState(state);
-        state.putBoolean("platformOpen", platformOpen);
-        state.putString("platformOwner", platformOwner);
-        state.putString("platformParentHash", platformParentHash);
-        state.putString("pendingPlatformPage", pendingPlatformPage);
-    }
+                            public void changed(String reason) {
+                                if (!accounts.activeId().equals(owner)) switchWorkspace();
+                                else {
+                                    if ("keys".equals(reason)) readKey();
+                                    bindWallet();
+                                    renderChat();
+                                    colors();
+                                }
+                            }
 
-    void onLocalPageStarted() {
-        localPageReady = false;
-        currentWorkspace = null;
-        dismissChatKeys();
-    }
-
-    void onLocalPageReady() {
-        localPageReady = true;
-        deliverPlatformReturn();
-    }
-
-    private void deliverPlatformReturn() {
-        if (platformOpen || !localPageReady || pendingPlatformPage == null || currentWorkspace == null) return;
-        if (platformOwner != null && !platformOwner.equals(currentWorkspace)) {
-            pendingPlatformPage = null;
-            platformOwner = null;
-            return;
-        }
-        platformOwner = null;
-        String destination = JSONObject.quote(LocalSite.INDEX + pendingPlatformPage);
-        pendingPlatformPage = null;
-        web.evaluateJavascript("location.replace(" + destination + ")", null);
-    }
-
-    private void applySystemBars() {
-        boolean systemDark = (getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK)
-                == Configuration.UI_MODE_NIGHT_YES;
-        boolean dark = pageDark != null ? pageDark : systemDark;
-        int background = dark ? Color.rgb(21, 21, 23) : Color.WHITE;
-        container.setBackgroundColor(background);
-        web.setBackgroundColor(background);
-        getWindow().setStatusBarColor(background);
-        getWindow().setNavigationBarColor(background);
-        View decor = getWindow().getDecorView();
-        int lightFlags = View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR | View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR;
-        decor.setSystemUiVisibility(dark ? decor.getSystemUiVisibility() & ~lightFlags
-                : decor.getSystemUiVisibility() | lightFlags);
-    }
-
-    @Override public void onConfigurationChanged(Configuration configuration) {
-        super.onConfigurationChanged(configuration);
-        applySystemBars();
-    }
-
-    @Override protected void onResume() {
-        super.onResume();
-        if (web == null) return;
-        web.onResume();
-        if (nativeChatKeys != null) nativeChatKeys.refresh();
-        web.evaluateJavascript("window.dispatchEvent(new Event('tokenseek:resume'))", null);
-    }
-
-    @Override protected void onPause() {
-        if (web != null) web.onPause();
-        super.onPause();
-    }
-
-    void openExternal(Uri uri) {
-        openExternal(uri, "");
-    }
-
-    private void openExternal(Uri uri, String fromPage) {
-        openExternal(uri, fromPage, null);
-    }
-
-    private void openExternal(Uri uri, String fromPage, String amount) {
-        if (!("https".equals(uri.getScheme()) || "http".equals(uri.getScheme()))
-                || uri.getHost() == null || uri.getUserInfo() != null || LocalSite.ownedOrigin(uri)) return;
-        if (OfficialPlatformActivity.isPlatformUrl(uri)) {
-            if (!platformOpen) {
-                if (currentWorkspace == null) return;
-                platformOpen = true;
-                platformOwner = currentWorkspace;
-                if ("wallet".equals(fromPage)) platformParentHash = "#return-official-wallet";
-                else if ("keys".equals(fromPage)) platformParentHash = "#return-official-keys";
-                else if ("account".equals(fromPage)) platformParentHash = "#return-official-account";
-                else if ("home".equals(fromPage)) platformParentHash = "#return-official-home";
-                else platformParentHash = null;
-                Intent task = OfficialPlatformActivity.createIntent(this, uri.toString(), platformOwner);
-                if (pageDark != null) task.putExtra(OfficialPlatformActivity.EXTRA_DARK, pageDark);
-                task.putExtra(OfficialPlatformActivity.EXTRA_FONT,
-                        Math.round(web.getSettings().getTextZoom() * 100f / Math.max(systemTextZoom, 1)));
-                if (amount != null && PaymentHandoff.MERCHANT.equals(uri.toString()))
-                    task.putExtra(OfficialPlatformActivity.EXTRA_AMOUNT, amount);
-                startActivityForResult(task, OPEN_PLATFORM);
-            }
-            return;
-        }
-        try {
-            startActivity(new Intent(Intent.ACTION_VIEW, uri).addCategory(Intent.CATEGORY_BROWSABLE));
-        } catch (ActivityNotFoundException unavailable) {
-            Toast.makeText(this, "没有可打开此链接的浏览器", Toast.LENGTH_SHORT).show();
-        }
-    }
-
-    void pickerResult(String result) {
-        if (!isDestroyed()) {
-            web.evaluateJavascript("window.tokenSeekPickerResult?.(" + JSONObject.quote(result) + ")", null);
-        }
-    }
-
-    private final class Chrome extends WebChromeClient {
-        @Override public boolean onShowFileChooser(WebView view, ValueCallback<Uri[]> callback,
-                                                   FileChooserParams params) {
-            if (filesCallback != null) {
-                callback.onReceiveValue(null);
-                return true;
-            }
-            filesCallback = callback;
-            Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE)
-                    .setType("*/*")
-                    .putExtra(Intent.EXTRA_ALLOW_MULTIPLE, params.getMode() == FileChooserParams.MODE_OPEN_MULTIPLE);
-            // Accept lists can contain extensions as well as MIME types. Android pickers only accept MIME.
-            String[] types = Arrays.stream(params.getAcceptTypes())
-                    .flatMap(type -> Arrays.stream(type.split(","))).map(String::trim)
-                    .filter(type -> type.contains("/") && !type.contains("*/*"))
-                    .toArray(String[]::new);
-            if (types.length > 0 && Arrays.stream(params.getAcceptTypes()).noneMatch(s -> s.contains("."))) {
-                intent.putExtra(Intent.EXTRA_MIME_TYPES, types);
-            }
-            try {
-                startActivityForResult(intent, PICK_FILES);
-            } catch (ActivityNotFoundException unavailable) {
-                filesCallback = null;
-                callback.onReceiveValue(null);
-                Toast.makeText(MainActivity.this, "没有可用的文件选择器", Toast.LENGTH_SHORT).show();
-            }
-            return true;
-        }
-
-        @Override public void onPermissionRequest(PermissionRequest request) {
-            if (!LocalSite.ownedOrigin(request.getOrigin())
-                    || !Arrays.asList(request.getResources()).contains(PermissionRequest.RESOURCE_AUDIO_CAPTURE)
-                    || audioRequest != null) {
-                request.deny();
-                return;
-            }
-            if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
-                request.grant(new String[]{PermissionRequest.RESOURCE_AUDIO_CAPTURE});
-                return;
-            }
-            audioRequest = request;
-            requestPermissions(new String[]{Manifest.permission.RECORD_AUDIO}, REQUEST_MICROPHONE);
-        }
-
-        @Override public void onPermissionRequestCanceled(PermissionRequest request) {
-            if (audioRequest == request) audioRequest = null;
-        }
-    }
-
-    @Override public void onRequestPermissionsResult(int code, String[] permissions, int[] results) {
-        super.onRequestPermissionsResult(code, permissions, results);
-        if (code != REQUEST_MICROPHONE || audioRequest == null) return;
-        PermissionRequest request = audioRequest;
-        audioRequest = null;
-        if (results.length > 0 && results[0] == PackageManager.PERMISSION_GRANTED) {
-            request.grant(new String[]{PermissionRequest.RESOURCE_AUDIO_CAPTURE});
-        } else {
-            request.deny();
-        }
-    }
-
-    @Override protected void onActivityResult(int request, int status, Intent data) {
-        super.onActivityResult(request, status, data);
-        if (request == OPEN_PLATFORM) {
-            platformOpen = false;
-            if (status == RESULT_OK && data != null && platformOwner != null
-                    && platformOwner.equals(data.getStringExtra(OfficialPlatformActivity.EXTRA_WORKSPACE))
-                    && data.getBooleanExtra(OfficialPlatformActivity.EXTRA_BIND, false)) {
-                pendingPlatformPage = "#bind-official-key";
-            }
-            platformParentHash = null;
-            if (pendingPlatformPage == null) platformOwner = null;
-            deliverPlatformReturn();
-        } else if (request == DocumentExport.PICK_DESTINATION) {
-            export.result(status, data);
-        } else if (request == PICK_FILES && filesCallback != null) {
-            List<Uri> files = new ArrayList<>();
-            if (status == RESULT_OK && data != null) {
-                ClipData clips = data.getClipData();
-                if (clips != null) {
-                    for (int i = 0; i < clips.getItemCount(); i++) {
-                        addDocument(files, clips.getItemAt(i).getUri());
-                    }
-                } else {
-                    addDocument(files, data.getData());
+                            public void pickPhoto() {
+                                pick(PICK_PHOTO, "image/*");
+                            }
+                        });
+        NativeHistoryTransfers.observe(transfers);
+        switchWorkspace();
+        if (state != null && owner.equals(state.getString("owner"))) {
+            wallet.restoreState(
+                    state.containsKey("wallet")
+                            ? state.getBundle("wallet")
+                            : state.getBundle("walletForm"));
+            pickerOwner = state.getString("pickerOwner", "");
+            pickerThread = state.getString("pickerThread", "");
+            ArrayList<String> saved = state.getStringArrayList("trail");
+            page = nativeDestination(state.getString("page", "chat"));
+            if (saved != null) {
+                String previous = page;
+                for (String entry : saved) {
+                    String restored = nativeDestination(entry);
+                    if (restored.equals(previous) && !"settings".equals(restored)) continue;
+                    trail.addLast(restored);
+                    previous = restored;
                 }
             }
-            ValueCallback<Uri[]> callback = filesCallback;
-            filesCallback = null;
-            callback.onReceiveValue(files.isEmpty() ? null : files.toArray(new Uri[0]));
+            ArrayList<Bundle> savedSettings = state.getParcelableArrayList("settingsTrail");
+            if (savedSettings != null) settingsTrail.addAll(savedSettings);
+            showPage(state.getBundle("settingsNavigation"));
+            if ("data".equals(page) && data != null) data.restoreState(state.getBundle("data"));
+        } else home();
+        NativeHistoryTransfers.Job ongoing = NativeHistoryTransfers.active(owner);
+        if (ongoing != null) transferChanged(ongoing);
+        root.post(this::offerLegacyData);
+        if (Build.VERSION.SDK_INT >= 33)
+            getOnBackInvokedDispatcher()
+                    .registerOnBackInvokedCallback(
+                            android.window.OnBackInvokedDispatcher.PRIORITY_DEFAULT, this::back);
+    }
+
+    private boolean en() {
+        return accounts.locale().startsWith("en");
+    }
+
+    private String t(String zh, String english) {
+        return en() ? english : zh;
+    }
+
+    private void toast(String message) {
+        Toast.makeText(this, message, Toast.LENGTH_LONG).show();
+    }
+
+    private void readKey() {
+        String snapshot = vault.manageProfile(owner, "read", "", "", "");
+        try {
+            JSONObject keys = new JSONObject(snapshot);
+            key = keys.isNull("apiKey") ? "" : keys.optString("apiKey");
+            settings.setKeySummary(
+                    owner,
+                    keys.optJSONArray("entries"),
+                    keys.isNull("activeId") ? "" : keys.optString("activeId"));
+        } catch (JSONException invalid) {
+            key = "";
+            settings.setKeySummary(owner, null, "");
         }
     }
 
-    private static void addDocument(List<Uri> files, Uri uri) {
-        if (uri != null && "content".equals(uri.getScheme())) files.add(uri);
+    private void bindWallet() {
+        wallet.bind(owner, key, en(), accounts.dark(), accounts.fontScale());
     }
 
-    @Override public void onBackPressed() {
-        handleBack();
+    private void switchWorkspace() {
+        cancelUpload();
+        if (thread != null) thread.close();
+        owner = accounts.activeId();
+        store = new NativeHistoryStore(this, owner);
+        thread =
+                new NativeThread(
+                        store,
+                        accounts,
+                        client,
+                        new NativeThread.Listener() {
+                            public void changed() {
+                                renderChat();
+                                if ("threadUsage".equals(page)) renderThreadUsage();
+                            }
+
+                            public void problem(String message) {
+                                toast(message);
+                            }
+                        });
+        data = null;
+        listStamp = "";
+        refreshSections();
+        readKey();
+        bindWallet();
+        colors();
+        settings.setBalance(owner, wallet.balanceLabel());
+        renderChat();
     }
 
-    private void handleBack() {
-        if (nativeChatKeys != null) {
-            nativeChatKeys.back();
+    private void colors() {
+        boolean dark = accounts.dark();
+        int color = dark ? 0xff16171a : 0xffffffff;
+        root.setBackgroundColor(color);
+        getWindow().setStatusBarColor(color);
+        getWindow().setNavigationBarColor(color);
+        int flags = View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR | View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR;
+        View decor = getWindow().getDecorView();
+        decor.setSystemUiVisibility(
+                dark
+                        ? decor.getSystemUiVisibility() & ~flags
+                        : decor.getSystemUiVisibility() | flags);
+    }
+
+    private void refreshSections() {
+        if (NativeHistoryTransfers.importing(owner)) {
+            sections = new JSONArray();
+            organization = new JSONObject();
             return;
         }
-        if (nativeFunding != null) {
-            nativeFunding.back();
-            return;
-        }
-        if (nativeSettings != null) {
-            nativeSettings.back();
-            return;
-        }
-        web.evaluateJavascript("window.tokenSeekHandleBack?.() === true", result -> {
-            if (isFinishing() || isDestroyed() || "true".equals(result)) return;
-            if (web.canGoBack()) web.goBack();
-            else if (!moveTaskToBack(true)) finishAfterTransition();
-        });
+        sections = store.sessions();
+        organization = store.organization();
     }
 
-    @Override protected void onDestroy() {
-        if (filesCallback != null) filesCallback.onReceiveValue(null);
-        if (audioRequest != null) audioRequest.deny();
-        dismissChatKeys();
-        export.close();
-        web.removeJavascriptInterface("TokenSeekHost");
-        web.stopLoading();
-        container.removeView(web);
-        web.destroy();
+    private void renderChat() {
+        if (thread == null
+                || chat == null
+                || !"chat".equals(page)
+                || NativeHistoryTransfers.importing(owner)) return;
+        JSONObject session = thread.session(), profile = accounts.profile();
+        String stamp =
+                session == null ? "" : thread.sessionId() + "/" + session.optLong("updatedAt");
+        if (!stamp.equals(listStamp)) {
+            listStamp = stamp;
+            refreshSections();
+        }
+        chat.render(
+                object(
+                        "sessionId",
+                        thread.sessionId(),
+                        "title",
+                        session == null ? "" : session.optString("title"),
+                        "draft",
+                        thread.draft(),
+                        "model",
+                        thread.model(),
+                        "thinking",
+                        thread.thinking(),
+                        "search",
+                        thread.search(),
+                        "streaming",
+                        thread.streamingHere(),
+                        "needsFlash",
+                        thread.needsFlash(),
+                        "attachment",
+                        thread.fileName(),
+                        "contextLabel",
+                        NativeUsagePage.remainingLabel(
+                                session,
+                                thread.model(),
+                                thread.draft(),
+                                thread.streamingHere(),
+                                !thread.fileName().isEmpty()),
+                        "nickname",
+                        profile.optString("nickname"),
+                        "avatar",
+                        profile.optString("avatar", ""),
+                        "balance",
+                        wallet.balanceLabel(),
+                        "dark",
+                        accounts.dark(),
+                        "locale",
+                        accounts.locale(),
+                        "scale",
+                        accounts.fontScale(),
+                        "messages",
+                        thread.displayMessages(),
+                        "sessions",
+                        sections,
+                        "organization",
+                        organization));
+    }
+
+    private void setView(View v) {
+        if (v.getParent() == root && root.getChildCount() == 1) return;
+        if (v.getParent() instanceof ViewGroup) ((ViewGroup) v.getParent()).removeView(v);
+        root.removeAllViews();
+        root.addView(v, new FrameLayout.LayoutParams(-1, -1));
+    }
+
+    private static String nativeDestination(String saved) {
+        if ("checkout".equals(saved)) return "wallet";
+        if ("transactions".equals(saved)) return "usage";
+        if ("officialKeys".equals(saved)) return "keys";
+        return saved == null ? "chat" : saved;
+    }
+
+    private void go(String destination) {
+        destination = nativeDestination(destination);
+        if (destination.equals(page)) return;
+        if ("settings".equals(page)) settingsTrail.push(settings.navigation());
+        trail.push(page);
+        page = destination;
+        showPage();
+    }
+
+    private void home() {
+        trail.clear();
+        settingsTrail.clear();
+        page = "chat";
+        showPage();
+    }
+
+    private void back() {
+        if ("settings".equals(page)) {
+            settings.back();
+            return;
+        }
+        if ("chat".equals(page)) {
+            if (!chat.back()) super.finish();
+            return;
+        }
+        if ("data".equals(page) && data != null && data.executing()) return;
+        if ("usage".equals(page) && platformUsage != null && platformUsage.backToOverview()) return;
+        popPage();
+    }
+
+    private void popPage() {
+        page = trail.isEmpty() ? "chat" : trail.pop();
+        showPage("settings".equals(page) ? settingsTrail.pollFirst() : null);
+    }
+
+    private void showPage() {
+        showPage(null);
+    }
+
+    private void showPage(Bundle settingsNavigation) {
+        usageRevision++;
+        if (page.startsWith("settings/")
+                || "account".equals(page)
+                || "keys".equals(page)
+                || "addKey".equals(page)
+                || "settings".equals(page)) {
+            String section =
+                    page.startsWith("settings/")
+                            ? page.substring(9)
+                            : "settings".equals(page) ? "home" : page;
+            boolean direct = "account".equals(page) || "keys".equals(page) || "addKey".equals(page);
+            page = "settings";
+            if (settingsNavigation != null) settings.restoreNavigation(settingsNavigation);
+            else if (direct) settings.enter(section);
+            else settings.render(section);
+            setView(settings);
+            return;
+        }
+        switch (page) {
+            case "wallet":
+                bindWallet();
+                setView(wallet.view());
+                break;
+            case "usage":
+                showPlatformUsage();
+                break;
+            case "localUsage":
+            case "threadUsage":
+                usage =
+                        new NativeUsagePage(
+                                this, en(), accounts.dark(), accounts.fontScale(), this::back);
+                setView(usage);
+                if ("threadUsage".equals(page)) renderThreadUsage();
+                else {
+                    long rev = usageRevision;
+                    NativeHistoryStore source = store;
+                    String name = accounts.profile().optString("nickname");
+                    io.execute(
+                            () -> {
+                                NativeUsageRecords.Totals readings;
+                                try {
+                                    readings =
+                                            NativeUsageRecords.accountTotals(source.allSessions());
+                                } catch (RuntimeException failure) {
+                                    readings = null;
+                                }
+                                NativeUsageRecords.Totals totals = readings;
+                                main.post(
+                                        () -> {
+                                            if (!isDestroyed() && rev == usageRevision)
+                                                usage.renderAccountTotals(name, totals);
+                                        });
+                            });
+                }
+                break;
+            case "data":
+                if (data == null || !data.isBusy()) data = makeData();
+                setView(data);
+                break;
+            default:
+                page = "chat";
+                setView(chat);
+                renderChat();
+        }
+    }
+
+    private void showPlatformUsage() {
+        platformUsage =
+                new NativePlatformUsagePage(
+                        this,
+                        en(),
+                        accounts.dark(),
+                        accounts.fontScale(),
+                        accounts.profile().optString("nickname"),
+                        this::back,
+                        new NativePlatformUsagePage.Actions() {
+                            public void pick() {
+                                MainActivity.this.pick(PICK_USAGE, "*/*");
+                            }
+
+                            public void select(String id) {
+                                updatePlatformUsage(null, id);
+                            }
+
+                            public void local() {
+                                go("localUsage");
+                            }
+                        });
+        setView(platformUsage);
+        updatePlatformUsage(null, null);
+    }
+
+    private void updatePlatformUsage(Uri input, String selectId) {
+        NativePlatformUsagePage view = platformUsage;
+        if (!"usage".equals(page) || view == null) return;
+        final String profile = owner;
+        final long revision = ++usageRevision;
+        final boolean isImport = input != null;
+        if (isImport && !android.content.ContentResolver.SCHEME_CONTENT.equals(input.getScheme())) {
+            view.show(
+                    null,
+                    t("请选择系统文件选择器中的用量报表。", "Choose a usage report from the document picker."));
+            return;
+        }
+        view.loading(
+                isImport ? t("正在导入报表…", "Importing report…") : t("正在读取报表…", "Reading reports…"));
+        android.content.Context app = getApplicationContext();
+        String success = isImport ? t("已导入报表。", "Report imported.") : "";
+        String failure =
+                isImport
+                        ? t(
+                                "导入失败。请选择开放平台的用量 ZIP 或用量明细 CSV，已有报表会保留。",
+                                "Could not import this file. Choose a platform usage ZIP or"
+                                    + " usage-amount CSV. Previously imported reports are kept.")
+                        : t("无法读取已保存的报表。", "Could not read the saved report.");
+        NativePlatformUsageStore.worker.execute(
+                () -> {
+                    NativePlatformUsageStore reports = new NativePlatformUsageStore(app, profile);
+                    NativePlatformUsageStore.Snapshot result = null;
+                    String status = success;
+                    try {
+                        if (isImport) {
+                            try (InputStream source =
+                                    app.getContentResolver().openInputStream(input)) {
+                                if (source == null) throw new java.io.IOException();
+                                reports.importReport(source);
+                            }
+                        } else if (selectId != null) reports.select(selectId);
+                        result = reports.read();
+                    } catch (java.io.IOException | RuntimeException problem) {
+                        status = failure;
+                    }
+                    final NativePlatformUsageStore.Snapshot snapshot = result;
+                    final String message = status;
+                    main.post(
+                            () -> {
+                                if (!isDestroyed()
+                                        && revision == usageRevision
+                                        && owner.equals(profile)
+                                        && "usage".equals(page)) {
+                                    view.show(snapshot, message);
+                                }
+                            });
+                });
+    }
+
+    private void renderThreadUsage() {
+        if (usage != null)
+            usage.renderConversation(
+                    thread.session(),
+                    thread.model(),
+                    thread.draft(),
+                    thread.streamingHere(),
+                    !thread.fileName().isEmpty());
+    }
+
+    private NativeDataPage makeData() {
+        NativeDataPage panel =
+                new NativeDataPage(
+                        this,
+                        store,
+                        en(),
+                        accounts.dark(),
+                        accounts.fontScale(),
+                        this::back,
+                        () -> {});
+        panel.onLegacyImport(this::confirmLegacy);
+        panel.guardImport(() -> !thread.generating() && !preparingAttachment);
+        return panel;
+    }
+
+    private void transferChanged(NativeHistoryTransfers.Job job) {
+        if (thread == null || !job.affects(owner) || job.kind == NativeHistoryTransfers.Kind.EXPORT)
+            return;
+        if (!job.finished) {
+            thread.pauseForImport();
+            main.removeCallbacks(meterUpdate);
+            if ((!"data".equals(page) || job.kind == NativeHistoryTransfers.Kind.LEGACY)
+                    && importProgress == null
+                    && !isFinishing()) {
+                android.widget.ProgressBar progress =
+                        new android.widget.ProgressBar(
+                                this, null, android.R.attr.progressBarStyleHorizontal);
+                progress.setIndeterminate(true);
+                int inset = Math.round(24 * getResources().getDisplayMetrics().density);
+                progress.setPadding(inset, inset / 2, inset, inset);
+                importProgress =
+                        new AlertDialog.Builder(this)
+                                .setTitle(t("正在导入数据…", "Importing data…"))
+                                .setView(progress)
+                                .setCancelable(false)
+                                .show();
+            }
+            return;
+        }
+        if (importProgress != null) {
+            importProgress.dismiss();
+            importProgress = null;
+        }
+        thread.finishImport();
+        listStamp = "";
+        if (job.kind == NativeHistoryTransfers.Kind.LEGACY && job.changed) {
+            switchWorkspace();
+            home();
+            toast(job.message);
+        } else {
+            refreshSections();
+            renderChat();
+            if ("threadUsage".equals(page)) renderThreadUsage();
+            if ("usage".equals(page)) showPage();
+            if (job.kind == NativeHistoryTransfers.Kind.LEGACY) toast(job.message);
+        }
+    }
+
+    private void offerLegacyData() {
+        if (isFinishing() || isDestroyed() || NativeHistoryTransfers.importing(owner)) return;
+        if (NativeLegacyImport.pending(this)) {
+            confirmLegacy();
+            return;
+        }
+        android.content.SharedPreferences notices =
+                getSharedPreferences("upgrade_notices", MODE_PRIVATE);
+        if (!"chat".equals(page) || notices.getBoolean("legacy", false)) return;
+        io.execute(
+                () -> {
+                    if (!NativeHistoryStore.hasLegacyStorage(this)
+                            || NativeLegacyImport.completed(this)) return;
+                    main.post(
+                            () -> {
+                                if (isFinishing()
+                                        || isDestroyed()
+                                        || !"chat".equals(page)
+                                        || notices.getBoolean("legacy", false)) return;
+                                new AlertDialog.Builder(this)
+                                        .setTitle(t("发现旧版对话数据", "Previous chat data found"))
+                                        .setMessage(
+                                                t(
+                                                        "旧版数据仍在此设备上。已有聊天备份可直接导入。要保留账户、草稿和附件，请使用离线迁移工具。",
+                                                        "Your previous data is still on this"
+                                                            + " device. Import a chat backup, or"
+                                                            + " use the offline migration tool to"
+                                                            + " keep profiles, drafts and files."))
+                                        .setNegativeButton(t("稍后", "Later"), null)
+                                        .setPositiveButton(
+                                                t("数据管理", "Data management"),
+                                                (dialog, which) -> go("data"))
+                                        .show();
+                                notices.edit().putBoolean("legacy", true).apply();
+                            });
+                });
+    }
+
+    private void confirmLegacy() {
+        if (NativeHistoryTransfers.active(owner) != null || !NativeLegacyImport.pending(this))
+            return;
+        new AlertDialog.Builder(this)
+                .setTitle(t("导入旧版数据", "Import previous data"))
+                .setMessage(
+                        t(
+                                "合并此设备已准备好的旧版账户、对话和附件，保留已有记录。",
+                                "Merge the profiles, chats and files prepared on this device,"
+                                    + " keeping existing records."))
+                .setNegativeButton(android.R.string.cancel, null)
+                .setPositiveButton(
+                        t("合并导入", "Merge"),
+                        (d, w) -> {
+                            NativeHistoryTransfers.Job job =
+                                    NativeHistoryTransfers.begin(
+                                            owner, NativeHistoryTransfers.Kind.LEGACY);
+                            if (job == null) {
+                                toast(
+                                        t(
+                                                "请先停止生成，或等待文件传输完成。",
+                                                "Stop the active reply or wait for the file"
+                                                    + " transfer."));
+                                return;
+                            }
+                            android.content.Context app = getApplicationContext();
+                            boolean english = en();
+                            io.execute(
+                                    () -> {
+                                        boolean merged;
+                                        try {
+                                            NativeLegacyImport.merge(
+                                                    app, new NativeAccountStore(app));
+                                            merged = true;
+                                        } catch (Exception failure) {
+                                            merged = false;
+                                        }
+                                        boolean success = merged;
+                                        String message =
+                                                success
+                                                        ? (english
+                                                                ? "Previous data imported."
+                                                                : "已导入旧版数据。")
+                                                        : (english
+                                                                ? "Import incomplete. Retry in Data"
+                                                                      + " management."
+                                                                : "导入未完成，可在数据管理中重试。");
+                                        new Handler(Looper.getMainLooper())
+                                                .post(
+                                                        () ->
+                                                                NativeHistoryTransfers.finish(
+                                                                        job, success, message));
+                                    });
+                        })
+                .show();
+    }
+
+    private void walletAction(String id) {
+        switch (id) {
+            case "back":
+                back();
+                break;
+            case "chat":
+                home();
+                break;
+            case "keys":
+                go("keys");
+                break;
+            case "usage":
+                go("usage");
+                break;
+        }
+    }
+
+    private boolean requireKey() {
+        if (!key.isEmpty()) return true;
+        new AlertDialog.Builder(this)
+                .setMessage(t("选用聊天密钥后即可发送。", "Select a chat key to send messages."))
+                .setNegativeButton(android.R.string.cancel, null)
+                .setPositiveButton(t("聊天密钥", "Chat keys"), (d, w) -> go("keys"))
+                .show();
+        return false;
+    }
+
+    private void action(String name, String value) {
+        if (NativeHistoryTransfers.importing(owner)) return;
+        switch (name) {
+            case "draft":
+                thread.draft(value);
+                renderDraftMeter();
+                return;
+            case "new":
+                cancelUpload();
+                thread.open(null);
+                break;
+            case "open":
+                cancelUpload();
+                thread.open(value);
+                break;
+            case "send":
+                if (preparingAttachment) {
+                    toast(t("附件正在上传。", "Uploading attachment."));
+                    return;
+                }
+                if (requireKey()) thread.send(value);
+                break;
+            case "stop":
+                thread.stop();
+                return;
+            case "retry":
+                if (requireKey()) thread.retry(value);
+                break;
+            case "settings":
+            case "account":
+                go(name);
+                return;
+            case "usage":
+                go("threadUsage");
+                return;
+            case "model":
+            case "thinking":
+            case "search":
+                thread.setOption(name, value);
+                break;
+            case "prev":
+            case "next":
+                thread.branch(value);
+                break;
+            case "continue":
+                if (requireKey()) thread.resume(value);
+                break;
+            case "edit":
+                editMessage(value);
+                return;
+            case "speak":
+                speak(value);
+                return;
+            case "attach":
+                if (requireKey()) pick(PICK_FILE, "*/*");
+                return;
+            case "removeAttachment":
+                cancelUpload();
+                thread.attach(null);
+                break;
+            case "voice":
+                voice();
+                return;
+            case "exportChat":
+                go("data");
+                data.exportSingle(value);
+                return;
+            default:
+                organize(name, value);
+                return;
+        }
+        renderChat();
+    }
+
+    private final Runnable meterUpdate = this::renderChat;
+
+    private void renderDraftMeter() {
+        main.removeCallbacks(meterUpdate);
+        main.postDelayed(meterUpdate, 120);
+    }
+
+    private void prompt(String title, String initial, java.util.function.Consumer<String> action) {
+        EditText field = new EditText(this);
+        field.setSingleLine(true);
+        field.setText(initial);
+        field.setSelectAllOnFocus(true);
+        field.setFilters(new InputFilter[] {new InputFilter.LengthFilter(100)});
+        new AlertDialog.Builder(this)
+                .setTitle(title)
+                .setView(field)
+                .setNegativeButton(android.R.string.cancel, null)
+                .setPositiveButton(
+                        android.R.string.ok,
+                        (d, w) -> {
+                            String v = field.getText().toString().trim();
+                            if (!v.isEmpty()) action.accept(v);
+                        })
+                .show();
+    }
+
+    private void editMessage(String id) {
+        JSONObject original = thread.message(id);
+        if (original == null || thread.generating() || !requireKey()) return;
+        EditText text = new EditText(this);
+        text.setText(original.optString("content"));
+        text.setMinLines(3);
+        new AlertDialog.Builder(this)
+                .setTitle(t("编辑消息", "Edit message"))
+                .setView(text)
+                .setNegativeButton(android.R.string.cancel, null)
+                .setPositiveButton(
+                        t("重新发送", "Send again"),
+                        (d, w) -> {
+                            String s = text.getText().toString();
+                            if (!s.trim().isEmpty()) thread.edit(id, s);
+                        })
+                .show();
+    }
+
+    private void organize(String action, String id) {
+        if (NativeHistoryTransfers.importing(owner)) return;
+        JSONObject org = store.organization(), assignments = org.optJSONObject("assignments");
+        JSONArray projects = org.optJSONArray("projects"), pins = org.optJSONArray("pinned");
+        switch (action) {
+            case "rename":
+                {
+                    JSONObject target = store.session(id);
+                    if (target == null) return;
+                    prompt(
+                            t("重命名对话", "Rename chat"),
+                            target.optString("title"),
+                            name -> {
+                                JSONObject latest =
+                                        id.equals(thread.sessionId())
+                                                ? thread.session()
+                                                : store.session(id);
+                                if (latest == null) return;
+                                put(latest, "title", name);
+                                store.saveSession(latest);
+                                refreshSections();
+                                renderChat();
+                            });
+                    return;
+                }
+            case "delete":
+                if (thread.generating()) {
+                    toast(t("请先停止生成。", "Stop the active reply first."));
+                    return;
+                }
+                new AlertDialog.Builder(this)
+                        .setMessage(t("删除这条对话及其所有分支？", "Delete this chat and all its branches?"))
+                        .setNegativeButton(android.R.string.cancel, null)
+                        .setPositiveButton(
+                                t("删除", "Delete"),
+                                (d, w) -> {
+                                    if (id.equals(thread.sessionId())) thread.open(null);
+                                    store.deleteSession(id);
+                                    refreshSections();
+                                    renderChat();
+                                })
+                        .show();
+                return;
+            case "togglePin":
+                {
+                    int existing = -1;
+                    for (int i = 0; i < pins.length(); i++)
+                        if (id.equals(pins.optString(i))) existing = i;
+                    if (existing < 0) pins.put(id);
+                    else pins.remove(existing);
+                    break;
+                }
+            case "move":
+                {
+                    String[] names = new String[projects.length() + 1];
+                    names[0] = t("最近对话", "Recent chats");
+                    for (int i = 0; i < projects.length(); i++)
+                        names[i + 1] = projects.optJSONObject(i).optString("name");
+                    new AlertDialog.Builder(this)
+                            .setTitle(t("移动到", "Move to"))
+                            .setItems(
+                                    names,
+                                    (d, w) -> {
+                                        if (w == 0) assignments.remove(id);
+                                        else
+                                            put(
+                                                    assignments,
+                                                    id,
+                                                    projects.optJSONObject(w - 1).optString("id"));
+                                        saveOrg(org);
+                                    })
+                            .show();
+                    return;
+                }
+            case "createProject":
+                prompt(
+                        t("新建项目", "New project"),
+                        "",
+                        name -> {
+                            projects.put(object("id", NativeThread.id(), "name", name));
+                            saveOrg(org);
+                        });
+                return;
+            case "renameProject":
+            case "deleteProject":
+                {
+                    int idx = -1;
+                    for (int i = 0; i < projects.length(); i++)
+                        if (id.equals(projects.optJSONObject(i).optString("id"))) idx = i;
+                    if (idx < 0) return;
+                    final int at = idx;
+                    JSONObject project = projects.optJSONObject(at);
+                    if ("renameProject".equals(action))
+                        prompt(
+                                t("项目名称", "Project name"),
+                                project.optString("name"),
+                                name -> {
+                                    put(project, "name", name);
+                                    saveOrg(org);
+                                });
+                    else
+                        new AlertDialog.Builder(this)
+                                .setMessage(
+                                        t(
+                                                "删除项目？其中的对话会保留。",
+                                                "Delete this project and keep its chats?"))
+                                .setNegativeButton(android.R.string.cancel, null)
+                                .setPositiveButton(
+                                        t("删除", "Delete"),
+                                        (d, w) -> {
+                                            projects.remove(at);
+                                            JSONArray ids = assignments.names();
+                                            for (int i = 0; ids != null && i < ids.length(); i++)
+                                                if (id.equals(
+                                                        assignments.optString(ids.optString(i))))
+                                                    assignments.remove(ids.optString(i));
+                                            saveOrg(org);
+                                        })
+                                .show();
+                    return;
+                }
+            default:
+                return;
+        }
+        saveOrg(org);
+    }
+
+    private void saveOrg(JSONObject org) {
+        store.saveOrganization(org);
+        refreshSections();
+        renderChat();
+    }
+
+    private void pick(int request, String mime) {
+        pickerOwner = owner;
+        pickerThread = thread.sessionId();
+        Intent intent =
+                new Intent(Intent.ACTION_OPEN_DOCUMENT)
+                        .addCategory(Intent.CATEGORY_OPENABLE)
+                        .setType(mime);
+        if (request == PICK_USAGE) {
+            intent.putExtra(
+                    Intent.EXTRA_MIME_TYPES,
+                    new String[] {
+                        "application/zip",
+                        "application/x-zip-compressed",
+                        "text/csv",
+                        "text/comma-separated-values",
+                        "application/csv",
+                        "text/plain",
+                        "application/vnd.ms-excel",
+                        "application/octet-stream"
+                    });
+        }
+        try {
+            startActivityForResult(intent, request);
+        } catch (ActivityNotFoundException missing) {
+            toast(t("没有可用的文件选择器。", "No document picker available."));
+        }
+    }
+
+    private void voice() {
+        pickerOwner = owner;
+        pickerThread = thread.sessionId();
+        Intent intent =
+                new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
+                        .putExtra(
+                                RecognizerIntent.EXTRA_LANGUAGE_MODEL,
+                                RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
+        try {
+            startActivityForResult(intent, VOICE);
+        } catch (ActivityNotFoundException missing) {
+            toast(t("设备未提供语音输入。", "Speech input is unavailable on this device."));
+        }
+    }
+
+    private void speak(String id) {
+        JSONObject m = thread.message(id);
+        if (m == null) return;
+        StringBuilder spoken = new StringBuilder();
+        JSONArray blocks = m.optJSONArray("blocks");
+        for (int i = 0; blocks != null && i < blocks.length(); i++) {
+            JSONObject b = blocks.optJSONObject(i);
+            if (b != null && "text".equals(b.optString("type")))
+                spoken.append(b.optString("text")).append('\n');
+        }
+        if (spoken.length() == 0) return;
+        if (speech == null)
+            speech =
+                    new TextToSpeech(
+                            this,
+                            status -> {
+                                if (status == TextToSpeech.SUCCESS && !isDestroyed())
+                                    readAloud(spoken.toString());
+                                else toast(t("设备未提供朗读。", "Speech playback is unavailable."));
+                            });
+        else readAloud(spoken.toString());
+    }
+
+    private void readAloud(String text) {
+        Locale language = en() ? Locale.US : Locale.SIMPLIFIED_CHINESE;
+        speech.setLanguage(language);
+        android.speech.tts.Voice choice =
+                NativeVoiceOptions.find(
+                        speech.getVoices(), accounts.preference("voiceName"), language);
+        if (choice != null) speech.setVoice(choice);
+        speech.stop();
+        int limit = TextToSpeech.getMaxSpeechInputLength();
+        for (int start = 0; start < text.length(); start += limit)
+            speech.speak(
+                    text.substring(start, Math.min(start + limit, text.length())),
+                    TextToSpeech.QUEUE_ADD,
+                    null,
+                    "chat-" + start);
+    }
+
+    @Override
+    public void onActivityResult(int request, int status, Intent result) {
+        super.onActivityResult(request, status, result);
+        if (request == 610 || request == 611) {
+            if (data != null) data.result(request, status, result);
+            else toast(t("请重新选择备份文件。", "Choose the backup file again."));
+            return;
+        }
+        if (status != RESULT_OK || result == null || !owner.equals(pickerOwner)) return;
+        if (request == PICK_USAGE) {
+            if (result.getData() != null && "usage".equals(page))
+                updatePlatformUsage(result.getData(), null);
+            return;
+        }
+        if (request == PICK_PHOTO) {
+            settings.onPhotoResult(result.getData());
+            return;
+        }
+        if (!thread.sessionId().equals(pickerThread)) return;
+        if (request == VOICE) {
+            ArrayList<String> words =
+                    result.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS);
+            if (words != null && !words.isEmpty()) {
+                thread.draft(thread.draft() + (thread.draft().isEmpty() ? "" : " ") + words.get(0));
+                renderChat();
+            }
+        } else if (request == PICK_FILE && result.getData() != null) attach(result.getData());
+    }
+
+    private void cancelUpload() {
+        attachmentRevision++;
+        if (upload != null) upload.stop();
+        upload = null;
+        preparingAttachment = false;
+    }
+
+    private void attach(Uri uri) {
+        cancelUpload();
+        int revision = attachmentRevision;
+        preparingAttachment = true;
+        NativeThread target = thread;
+        String sid = target.sessionId();
+        NativeHistoryStore destination = store;
+        upload =
+                client.upload(
+                        owner,
+                        uri,
+                        (file, error) -> {
+                            if (revision != attachmentRevision
+                                    || target != thread
+                                    || !sid.equals(thread.sessionId())
+                                    || isDestroyed()) return;
+                            upload = null;
+                            if (file == null) {
+                                preparingAttachment = false;
+                                toast(error);
+                                return;
+                            }
+                            String id = NativeThread.id();
+                            put(file, "id", id);
+                            NativeHistoryTransfers.writingAttachment(destination.workspace);
+                            Handler completion = new Handler(Looper.getMainLooper());
+                            io.execute(
+                                    () -> {
+                                        boolean saved = false;
+                                        try (InputStream input =
+                                                getContentResolver().openInputStream(uri)) {
+                                            if (input == null) throw new java.io.IOException();
+                                            destination.saveAttachment(id, input);
+                                            saved = true;
+                                        } catch (Exception failure) {
+                                            saved = false;
+                                        }
+                                        boolean copied = saved;
+                                        completion.post(
+                                                () -> {
+                                                    NativeHistoryTransfers.finishedAttachment(
+                                                            destination.workspace);
+                                                    if (isDestroyed()
+                                                            || revision != attachmentRevision
+                                                            || target != thread
+                                                            || !sid.equals(thread.sessionId()))
+                                                        return;
+                                                    preparingAttachment = false;
+                                                    if (copied) {
+                                                        thread.attach(file);
+                                                        renderChat();
+                                                    } else
+                                                        toast(
+                                                                t(
+                                                                        "无法保存附件原件。",
+                                                                        "Could not save the"
+                                                                            + " attachment."));
+                                                });
+                                    });
+                        });
+        toast(t("正在上传附件…", "Uploading attachment…"));
+    }
+
+    @Override
+    protected void onSaveInstanceState(Bundle state) {
+        super.onSaveInstanceState(state);
+        thread.persist();
+        state.putBundle("wallet", wallet.saveState());
+        state.putString("owner", owner);
+        state.putString("page", page);
+        if ("settings".equals(page)) state.putBundle("settingsNavigation", settings.navigation());
+        state.putParcelableArrayList("settingsTrail", new ArrayList<>(settingsTrail));
+        if (data != null && "data".equals(page)) state.putBundle("data", data.state());
+        state.putStringArrayList("trail", new ArrayList<>(trail));
+        state.putString("pickerOwner", pickerOwner);
+        state.putString("pickerThread", pickerThread);
+    }
+
+    @Override
+    protected void onPause() {
+        super.onPause();
+        if (thread != null) thread.persist();
+        refreshOnReturn = true;
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        if (refreshOnReturn && wallet != null) {
+            refreshOnReturn = false;
+            wallet.refresh();
+        }
+    }
+
+    @Override
+    public void onConfigurationChanged(Configuration configuration) {
+        super.onConfigurationChanged(configuration);
+        colors();
+        bindWallet();
+        if ("settings".equals(page)) settings.refresh();
+        else showPage();
+    }
+
+    @Override
+    public void onBackPressed() {
+        back();
+    }
+
+    @Override
+    protected void onDestroy() {
+        NativeHistoryTransfers.forget(transfers);
+        if (importProgress != null) {
+            importProgress.dismiss();
+            importProgress = null;
+        }
+        main.removeCallbacksAndMessages(null);
+        if (thread != null) thread.close();
+        if (settings != null) settings.close();
+        if (wallet != null) wallet.close();
+        if (client != null) client.close();
+        if (speech != null) speech.shutdown();
+        io.shutdown();
         super.onDestroy();
-    }
-
-    private void updateDrawerEdge() {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q || web == null) return;
-        if (!drawerGestureEnabled || nativeSettings != null || nativeFunding != null || nativeChatKeys != null || web.getHeight() == 0) {
-            web.setSystemGestureExclusionRects(Collections.emptyList());
-            return;
-        }
-        // Keep Android Back available along the rest of both edges.
-        float density = getResources().getDisplayMetrics().density;
-        int half = Math.min(web.getHeight() / 2, Math.round(80 * density));
-        int center = web.getHeight() / 2;
-        Rect edge = new Rect(0, center - half, Math.min(web.getWidth(), Math.round(24 * density)), center + half);
-        web.setSystemGestureExclusionRects(Collections.singletonList(edge));
-    }
-
-    private void presentSettings(String data) {
-        if (isFinishing() || isDestroyed()) return;
-        if (data.isEmpty()) {
-            if (nativeSettings != null) {
-                container.removeView(nativeSettings);
-                nativeSettings = null;
-                syncNativePanels();
-            }
-            return;
-        }
-        try {
-            JSONObject screen = new JSONObject(data);
-            String page = screen.optString("page");
-            if (!(page.equals("home") || page.equals("theme") || page.equals("font")
-                    || page.equals("personalization") || page.equals("account"))) return;
-            if (nativeSettings == null) {
-                dismissChatKeys();
-                presentFunding("");
-                nativeSettings = new NativeSettings(this, (source, id) -> {
-                    String detail = "{page:" + JSONObject.quote(source) + ",id:" + JSONObject.quote(id) + "}";
-                    web.evaluateJavascript("window.dispatchEvent(new CustomEvent('tokenseek:preference-action',{detail:"
-                            + detail + "}))", null);
-                });
-                container.addView(nativeSettings, new FrameLayout.LayoutParams(-1, -1));
-                syncNativePanels();
-            }
-            nativeSettings.render(screen);
-        } catch (org.json.JSONException invalidScreen) {
-            presentSettings("");
-        }
-    }
-
-    private void syncNativePanels() {
-        updateDrawerEdge();
-        boolean covered = nativeSettings != null || nativeFunding != null || nativeChatKeys != null;
-        web.setImportantForAccessibility(covered ? View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS
-                : View.IMPORTANT_FOR_ACCESSIBILITY_AUTO);
-    }
-
-    private void presentFunding(String data) {
-        if (isFinishing() || isDestroyed()) return;
-        if (data.isEmpty()) {
-            if (nativeFunding != null) {
-                container.removeView(nativeFunding);
-                nativeFunding = null;
-                syncNativePanels();
-            }
-            return;
-        }
-        try {
-            JSONObject screen = new JSONObject(data);
-            if (!"wallet".equals(screen.optString("page"))) return;
-            if (nativeFunding == null) {
-                dismissChatKeys();
-                presentSettings("");
-                nativeFunding = new NativeFunding(this, (id, amount) -> {
-                    String detail = "{id:" + JSONObject.quote(id) + ",amount:" + JSONObject.quote(amount) + "}";
-                    web.evaluateJavascript("window.dispatchEvent(new CustomEvent('tokenseek:funding-action',{detail:"
-                            + detail + "}))", null);
-                });
-                container.addView(nativeFunding, new FrameLayout.LayoutParams(-1, -1));
-                syncNativePanels();
-            }
-            nativeFunding.render(screen);
-        } catch (org.json.JSONException invalidScreen) {
-            presentFunding("");
-        }
-    }
-
-    private void dismissChatKeys() {
-        if (nativeChatKeys == null) return;
-        nativeChatKeys.close();
-        container.removeView(nativeChatKeys);
-        nativeChatKeys = null;
-        syncNativePanels();
-    }
-
-    private void presentChatKeys(String json) {
-        if (isFinishing() || isDestroyed()) return;
-        if (json.isEmpty()) {
-            dismissChatKeys();
-            return;
-        }
-        try {
-            JSONObject screen = new JSONObject(json);
-            String profile = screen.optString("profile");
-            if (!"keys".equals(screen.optString("page")) || !profile.equals(currentWorkspace)) return;
-            if (nativeChatKeys == null) {
-                presentSettings("");
-                presentFunding("");
-                nativeChatKeys = new NativeChatKeys(this, vault, (action, argument) -> {
-                    if (nativeChatKeys == null || !profile.equals(currentWorkspace)) return;
-                    String detail = "{id:" + JSONObject.quote(action) + ",argument:" + JSONObject.quote(argument) + "}";
-                    web.evaluateJavascript("window.dispatchEvent(new CustomEvent('tokenseek:chat-key-action',{detail:"
-                            + detail + "}))", null);
-                });
-                container.addView(nativeChatKeys, new FrameLayout.LayoutParams(-1, -1));
-                syncNativePanels();
-                nativeChatKeys.requestFocus();
-            }
-            nativeChatKeys.render(screen);
-        } catch (org.json.JSONException invalidScreen) {
-            dismissChatKeys();
-        }
-    }
-
-    private final class Bridge {
-        @JavascriptInterface public void setWorkspace(String token, String id) {
-            if (!capability.equals(token) || !OfficialPlatformActivity.isValidWorkspaceId(id)) return;
-            runOnUiThread(() -> {
-                if (!id.equals(currentWorkspace)) dismissChatKeys();
-                currentWorkspace = id;
-                deliverPlatformReturn();
-            });
-        }
-        @JavascriptInterface public void setDrawerGesture(String token, boolean enabled) {
-            if (capability.equals(token)) runOnUiThread(() -> {
-                drawerGestureEnabled = enabled;
-                updateDrawerEdge();
-            });
-        }
-        @JavascriptInterface public void showPreferences(String token, String json) {
-            if (capability.equals(token) && json != null && json.length() <= 16384)
-                runOnUiThread(() -> presentSettings(json));
-        }
-        @JavascriptInterface public void showFunding(String token, String json) {
-            if (capability.equals(token) && json != null && json.length() <= 16384)
-                runOnUiThread(() -> presentFunding(json));
-        }
-        @JavascriptInterface public void showChatKeys(String token, String json) {
-            if (capability.equals(token) && json != null && json.length() <= 131072)
-                runOnUiThread(() -> presentChatKeys(json));
-        }
-        @JavascriptInterface public void openFunding(String token, String amount) {
-            if (!capability.equals(token) || amount == null) return;
-            String value = NativeFunding.parseAmount(amount).value;
-            if (value.isEmpty()) return;
-            runOnUiThread(() -> {
-                if (nativeFunding != null) openExternal(Uri.parse(PaymentHandoff.MERCHANT), "wallet", value);
-            });
-        }
-        @JavascriptInterface public void scaleText(String token, int percent) {
-            if (capability.equals(token) && percent >= 90 && percent <= 130)
-                runOnUiThread(() -> web.getSettings().setTextZoom(Math.round(systemTextZoom * percent / 100f)));
-        }
-        @JavascriptInterface public void setDarkTheme(String token, boolean dark) {
-            if (capability.equals(token)) {
-                runOnUiThread(() -> {
-                    pageDark = dark;
-                    applySystemBars();
-                });
-            }
-        }
-        @JavascriptInterface public String manageKeys(String token, String action, String id, String name, String secret) {
-            return capability.equals(token) ? vault.manage(action, id, name, secret) : "";
-        }
-        @JavascriptInterface public String manageProfileKeys(String token, String profile, String action, String id, String name, String secret) {
-            return capability.equals(token) ? vault.manageProfile(profile, action, id, name, secret) : "";
-        }
-        @JavascriptInterface public void openLink(String token, String url, String fromPage) {
-            if (capability.equals(token) && url != null) {
-                runOnUiThread(() -> openExternal(Uri.parse(url), fromPage));
-            }
-        }
-        @JavascriptInterface public boolean chooseDocument(String token, String name, String mime) {
-            return capability.equals(token) && export.choose(name, mime);
-        }
-        @JavascriptInterface public boolean writeDocument(String token, String chunk) {
-            return capability.equals(token) && export.append(chunk);
-        }
-        @JavascriptInterface public boolean closeDocument(String token) {
-            return capability.equals(token) && export.close();
-        }
-        @JavascriptInterface public void showError(String token, String message) {
-            if (capability.equals(token) && message != null) {
-                runOnUiThread(() -> Toast.makeText(MainActivity.this, message, Toast.LENGTH_SHORT).show());
-            }
-        }
     }
 }

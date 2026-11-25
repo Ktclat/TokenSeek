@@ -11,29 +11,45 @@ android {
         applicationId 'io.tokenseek.app'
         minSdk 26
         targetSdk 35
-        versionCode 11
-        versionName '0.9.2'
+        versionCode 15
+        versionName '0.10.2'
         testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'
     }
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_17
         targetCompatibility JavaVersion.VERSION_17
     }
+    // Older checkouts generated a complete website under src/main/assets/site.
+    // Keep that ignored build output outside the production APK on incremental upgrades.
+    sourceSets.main.assets.setSrcDirs(['src/main/nativeAssets'])
 }
 
 dependencies {
-    implementation 'androidx.webkit:webkit:1.12.1'
-    implementation 'com.google.zxing:core:3.5.3'
     testImplementation 'junit:junit:4.13.2'
     androidTestImplementation 'androidx.test:runner:1.6.2'
     androidTestImplementation 'androidx.test.ext:junit:1.2.1'
 }
 
-def prepareChat = tasks.register('prepareChat', Exec) {
-    workingDir rootDir
-    commandLine 'bash', 'tools/build-web.sh'
-    inputs.file rootProject.file('tools/build-web.sh')
-    inputs.files rootProject.fileTree('web')
-    outputs.dir file('src/main/assets/site')
+// Android screens must remain native in every build variant, including upgrades.
+def verifyNativeScreens = tasks.register('verifyNativeScreens') {
+    def sources = fileTree('src') {
+        include '**/*.java', '**/*.kt', '**/res/**/*.xml', '**/AndroidManifest.xml'
+        exclude 'test/**', 'androidTest/**', 'main/assets/site/**'
+    }
+    def pages = fileTree('src') {
+        include '**/*.html', '**/*.htm', '**/*.js', '**/*.mjs', '**/*.css', '**/*.wasm', '**/*.webarchive'
+        exclude 'test/**', 'androidTest/**', 'main/assets/site/**'
+    }
+    inputs.files(sources, pages)
+    doLast {
+        def offenders = sources.findAll { source ->
+            def content = source.getText('UTF-8')
+            content =~ /(?:androidx?\.webkit\.|\bWebView\b)/ ||
+                content =~ /(?i)https?:\/\/platform\.deepseek\.com\/(?:api_keys|transactions|top_up|usage)(?:[\/\?#"'\s<]|$)/
+        }
+        if (!pages.isEmpty() || !offenders.isEmpty()) {
+            throw new GradleException("TokenSeek requires native Android screens: " + (offenders + pages.files)*.name.join(', '))
+        }
+    }
 }
-tasks.named('preBuild') { dependsOn prepareChat }
+tasks.named('preBuild') { dependsOn verifyNativeScreens }

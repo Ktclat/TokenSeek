@@ -1,6 +1,3 @@
 <resources>
     <color name="platform_ink">#F0F2F6</color>
-    <color name="platform_muted">#B8C1CD</color>
-    <color name="platform_accent">#A5B5FF</color>
-    <color name="platform_hint_background">#283043</color>
 </resources>

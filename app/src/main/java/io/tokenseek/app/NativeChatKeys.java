@@ -58,6 +58,7 @@ final class NativeChatKeys extends LinearLayout {
     private String owner = "", nickname = "", locale = "", other = "", editingId = "";
     private String bridgeError = "";
     private boolean dark, focusedRequest, reading, writing, closed;
+    private boolean connectFromAccount;
     private int percent = 100;
     private long readVersion;
     private NativeChatKeysVerification verification;
@@ -109,7 +110,7 @@ final class NativeChatKeys extends LinearLayout {
     void render(JSONObject screen) {
         if (closed) return;
         String nextOwner = screen.optString("profile");
-        if (!OfficialPlatformActivity.isValidWorkspaceId(nextOwner)) return;
+        if (!NativeAccountStore.validId(nextOwner)) return;
         boolean switched = !owner.equals(nextOwner);
         String nextName = screen.optString("nickname", nextOwner);
         String nextLocale = screen.optString("locale", "zh-CN");
@@ -130,6 +131,7 @@ final class NativeChatKeys extends LinearLayout {
         locale = nextLocale;
         dark = nextDark;
         percent = size;
+        connectFromAccount = screen.optBoolean("connectFromAccount");
         boolean focus = screen.optBoolean("focusNewKey");
         boolean openAdd = focus && (!focusedRequest || switched);
         focusedRequest = focus;
@@ -239,7 +241,8 @@ final class NativeChatKeys extends LinearLayout {
                     message(text(stale ? R.string.chat_keys_changed : R.string.chat_keys_storage));
                 } else {
                     ring = result;
-                    go(Page.LIST);
+                    if ("add".equals(action) && connectFromAccount) listener.action("back", profile);
+                    else go(Page.LIST);
                 }
             });
         });
@@ -325,7 +328,7 @@ final class NativeChatKeys extends LinearLayout {
 
     void back() {
         if (writing || closed) return;
-        if (page == Page.LIST) listener.action("back", owner);
+        if (page == Page.LIST || (page == Page.ADD && connectFromAccount)) listener.action("back", owner);
         else if (page == Page.REMOVE) go(Page.EDIT);
         else if (page == Page.OTHER) {
             go(Page.LIST);
@@ -358,7 +361,7 @@ final class NativeChatKeys extends LinearLayout {
         title.setTextSize(18f * percent / 100);
         content.removeAllViews();
         int heading = R.string.chat_keys_title;
-        if (page == Page.ADD) heading = R.string.chat_keys_add;
+        if (page == Page.ADD) heading = connectFromAccount ? R.string.ac_connect : R.string.chat_keys_add;
         if (page == Page.EDIT || page == Page.REMOVE) heading = R.string.chat_keys_manage;
         title.setText(text(heading));
         if (Build.VERSION.SDK_INT >= 28) setAccessibilityPaneTitle(title.getText());
@@ -385,8 +388,6 @@ final class NativeChatKeys extends LinearLayout {
     }
 
     private void list() {
-        LinearLayout official = card();
-        linkRow(official, text(R.string.chat_keys_official), () -> listener.action("official", owner));
         section(text(R.string.chat_keys_account, nickname));
         rows(ring, true);
         if (accounts.length() > 1) {
@@ -395,7 +396,7 @@ final class NativeChatKeys extends LinearLayout {
             for (int i = 0; i < accounts.length(); i++) {
                 JSONObject profile = accounts.optJSONObject(i);
                 if (profile == null || owner.equals(profile.optString("id"))
-                        || !OfficialPlatformActivity.isValidWorkspaceId(profile.optString("id"))) continue;
+                        || !NativeAccountStore.validId(profile.optString("id"))) continue;
                 String id = profile.optString("id");
                 if (others.getChildCount() > 0) divider(others);
                 linkRow(others, profile.optString("nickname", id), () -> {
