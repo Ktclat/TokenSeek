@@ -92,6 +92,37 @@ final class NativeFunding extends FrameLayout {
 
     void back() { listener.action("back", ""); }
 
+    Bundle saveForm() {
+        Bundle state = new Bundle();
+        state.putString("selection", selection);
+        if (input != null && input.length() <= 64) state.putString("custom", input.getText().toString());
+        state.putBoolean("details", detailsExpanded);
+        return state;
+    }
+
+    void restoreForm(Bundle state) {
+        if (state == null || input == null) return;
+        String saved = state.getString("selection", "");
+        selection = "";
+        for (Button choice : choices) {
+            if (saved.equals(choice.getTag())) {
+                selection = saved;
+                break;
+            }
+        }
+        detailsExpanded = state.getBoolean("details");
+        input.setText(state.getString("custom", ""));
+        updateAmount();
+    }
+
+    void resetAccount() {
+        selection = "";
+        detailsExpanded = false;
+        appearance = "";
+        input = null;
+        scroll = null;
+    }
+
     void render(JSONObject screen) {
         JSONObject nextLabels = screen.optJSONObject("labels");
         if (nextLabels == null) return;

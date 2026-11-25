@@ -24,6 +24,57 @@ import java.util.ArrayList;
 
 @RunWith(AndroidJUnit4.class)
 public class NativeFundingSelectionTest {
+    @Test public void restoresUnsubmittedAmountOnlyToItsOwnAccount() {
+        InstrumentationRegistry.getInstrumentation().runOnMainSync(() -> {
+            Context context = InstrumentationRegistry.getInstrumentation().getTargetContext();
+            ArrayList<String> actions = new ArrayList<>();
+            NativeWalletController first = new NativeWalletController(context, (id, value) -> actions.add(id));
+            NativeWalletController restored = new NativeWalletController(context, (id, value) -> actions.add(id));
+            try {
+                first.bind("alice", "", false, false, 100);
+                button(first.view(), "自定义").performClick();
+                editor(first.view()).setText("100.06");
+                android.os.Bundle form = first.saveForm();
+
+                restored.bind("bob", "", false, false, 100);
+                restored.restoreForm(form);
+                assertNull(editor(restored.view()));
+                assertFalse(button(restored.view(), "核对充值金额").isEnabled());
+
+                restored.bind("alice", "", false, false, 100);
+                restored.restoreForm(form);
+                assertEquals("100.06", editor(restored.view()).getText().toString());
+                assertTrue(button(restored.view(), "核对充值金额 · ¥100.06").isEnabled());
+                assertTrue(actions.isEmpty());
+            } finally {
+                first.close();
+                restored.close();
+            }
+        });
+    }
+
+    @Test public void unboundWalletOpensChatKeysAndReviewsTheSelectedAmount() {
+        InstrumentationRegistry.getInstrumentation().runOnMainSync(() -> {
+            Context context = InstrumentationRegistry.getInstrumentation().getTargetContext();
+            ArrayList<String> actions = new ArrayList<>();
+            NativeWalletController controller = new NativeWalletController(context, (id, amount) -> actions.add(id + "/" + amount));
+            try {
+                controller.bind("default", "", false, false, 100);
+                View wallet = controller.view();
+                button(wallet, "聊天密钥").performClick();
+                button(wallet, "¥50").performClick();
+                button(wallet, "核对充值金额 · ¥50").performClick();
+                assertEquals("keys/", actions.get(0));
+                assertEquals("checkout/50.00", actions.get(1));
+                controller.bind("default", "", true, false, 100);
+                assertTrue(button(wallet, "Chat keys").isEnabled());
+                assertTrue(button(wallet, "Review top-up · ¥50").isEnabled());
+            } finally {
+                controller.close();
+            }
+        });
+    }
+
     @Test public void customDraftAndPresetUseTheirOwnCheckoutAmountsAcrossRefresh() throws JSONException {
         JSONObject labels = new JSONObject().put("customChoice", "Custom").put("custom", "Custom amount")
                 .put("checkout", "Checkout").put("refresh", "Refresh").put("refreshing", "Refreshing");

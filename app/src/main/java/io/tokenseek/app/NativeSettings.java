@@ -100,7 +100,9 @@ final class NativeSettings extends FrameLayout {
             TextView sample = label(screen.optString("sample"), 16, foreground);
             sample.setBackground(card());
             sample.setPadding(dp(18), dp(24), dp(18), dp(24));
-            content.addView(sample, -1, -2);
+            LinearLayout.LayoutParams sampleBox = new LinearLayout.LayoutParams(-1, -2);
+            sampleBox.bottomMargin = dp(12);
+            content.addView(sample, sampleBox);
         }
         JSONArray groups = screen.optJSONArray("groups");
         if (groups != null) for (int i = 0; i < groups.length(); i++) {

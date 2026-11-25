@@ -1,6 +1,6 @@
 <resources>
-    <string name="chat_keys_title">聊天使用的密钥</string>
-    <string name="chat_keys_official">开放平台密钥管理</string>
+    <string name="chat_keys_title">聊天密钥</string>
+    <string name="chat_keys_official">开放平台密钥</string>
     <string name="chat_keys_account">本机账户 · %1$s</string>
     <string name="chat_keys_empty">还没有聊天密钥</string>
     <string name="chat_keys_add">添加已有密钥</string>

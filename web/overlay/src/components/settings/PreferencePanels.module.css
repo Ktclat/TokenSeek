@@ -1,9 +1,0 @@
-.group + .group { margin-top: 18px; }
-.sample {
-  background: var(--dsw-alias-bg-base);
-  color: var(--dsw-alias-label-primary);
-  border-radius: 16px;
-  padding: 24px 16px;
-  margin: 0 0 20px;
-  line-height: 1.6;
-}

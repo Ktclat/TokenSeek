@@ -109,7 +109,7 @@ final class NativeChatKeys extends LinearLayout {
     void render(JSONObject screen) {
         if (closed) return;
         String nextOwner = screen.optString("profile");
-        if (!OfficialPlatformActivity.isValidWorkspaceId(nextOwner)) return;
+        if (!NativeAccountStore.validId(nextOwner)) return;
         boolean switched = !owner.equals(nextOwner);
         String nextName = screen.optString("nickname", nextOwner);
         String nextLocale = screen.optString("locale", "zh-CN");
@@ -395,7 +395,7 @@ final class NativeChatKeys extends LinearLayout {
             for (int i = 0; i < accounts.length(); i++) {
                 JSONObject profile = accounts.optJSONObject(i);
                 if (profile == null || owner.equals(profile.optString("id"))
-                        || !OfficialPlatformActivity.isValidWorkspaceId(profile.optString("id"))) continue;
+                        || !NativeAccountStore.validId(profile.optString("id"))) continue;
                 String id = profile.optString("id");
                 if (others.getChildCount() > 0) divider(others);
                 linkRow(others, profile.optString("nickname", id), () -> {

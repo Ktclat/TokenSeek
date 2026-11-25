@@ -1,8 +1,0 @@
-<resources>
-    <string name="issued_title">API 密钥已创建</string>
-    <string name="issued_explanation">完整密钥仅显示一次。可保存到当前本机账户。</string>
-    <string name="issued_save">保存并用于聊天</string>
-    <string name="issued_review">查看官方结果</string>
-    <string name="issued_saved">已选用新密钥</string>
-    <string name="issued_save_failed">未能保存。请从官方结果复制新密钥。</string>
-</resources>

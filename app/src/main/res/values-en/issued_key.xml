@@ -1,8 +1,0 @@
-<resources>
-    <string name="issued_title">API key created</string>
-    <string name="issued_explanation">DeepSeek shows the full key once. You can save it to the current device account.</string>
-    <string name="issued_save">Save and use for chat</string>
-    <string name="issued_review">View on DeepSeek</string>
-    <string name="issued_saved">New key selected for chat</string>
-    <string name="issued_save_failed">Couldn’t save. Copy the new key from DeepSeek.</string>
-</resources>
